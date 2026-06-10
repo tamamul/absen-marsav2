@@ -131,7 +131,25 @@ static Future<Map<String, dynamic>> absenKeluar(
     return e.response?.data ?? {'status': false, 'message': 'Koneksi gagal'};
   }
 }
-  
+
+// CEK LOKASI
+static Future<Map<String, dynamic>> cekLokasi(
+    double lat, double lng) async {
+  try {
+    final headers = await _authHeader();
+    final res = await _dio.post(
+      ApiConfig.cekLokasi,
+      data: {'latitude': lat.toString(), 'longitude': lng.toString()},
+      options: Options(headers: {
+        'X-Api-Token': headers['X-Api-Token'],
+      }),
+    );
+    return res.data;
+  } on DioException catch (e) {
+    return e.response?.data ?? {'status': false, 'message': 'Koneksi gagal'};
+  }
+}
+
 
   // RIWAYAT ABSEN
   static Future<Map<String, dynamic>> getRiwayat() async {
