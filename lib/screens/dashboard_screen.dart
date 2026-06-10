@@ -17,12 +17,13 @@ class DashboardScreen extends StatefulWidget {
 class _DashboardScreenState extends State<DashboardScreen> {
   PegawaiModel? _pegawai;
   PresensiModel? _presensi;
-  bool _loading       = true;
-  bool _cekLokasi     = false;
+  bool _loading        = true;
+  bool _cekLokasi      = false;
+  bool? _didalam       = null;
+  int _jarak           = 0;
+  String _pesanLokasi  = '';
   Position? _posisi;
-  bool? _didalam      = null;
-  int _jarak          = 0;
-  String _pesanLokasi = '';
+  int _navIndex        = 0;
 
   @override
   void initState() {
@@ -47,15 +48,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
     } catch (e) {
       setState(() => _loading = false);
     }
-    // Auto cek lokasi setelah data loaded
     await _validasiLokasi();
   }
 
   Future<void> _validasiLokasi() async {
     setState(() {
-      _cekLokasi  = true;
+      _cekLokasi   = true;
       _pesanLokasi = 'Mengecek lokasi...';
-      _didalam    = null;
+      _didalam     = null;
     });
 
     try {
@@ -76,11 +76,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
       final pos = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.high,
       );
-
-        _posisi = pos;
+      _posisi = pos;
 
       final res = await ApiService.cekLokasi(pos.latitude, pos.longitude);
-
       setState(() {
         _cekLokasi   = false;
         _didalam     = res['didalam'] == true;
@@ -105,6 +103,73 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
+  void _showProfilMenu() {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Handle
+            Container(
+              width: 40, height: 4,
+              margin: const EdgeInsets.only(bottom: 20),
+              decoration: BoxDecoration(
+                color: Colors.grey[300],
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            // Avatar besar
+            CircleAvatar(
+              radius: 40,
+              backgroundColor: const Color(0xFF1B5E20),
+              child: Text(
+                _pegawai?.nama.isNotEmpty == true
+                    ? _pegawai!.nama[0].toUpperCase()
+                    : '?',
+                style: const TextStyle(
+                    fontSize: 36,
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text(_pegawai?.nama ?? '-',
+                style: const TextStyle(
+                    fontSize: 18, fontWeight: FontWeight.bold)),
+            Text(_pegawai?.jabatan ?? '-',
+                style: const TextStyle(color: Colors.grey)),
+            Text(_pegawai?.nip ?? '-',
+                style: const TextStyle(color: Colors.grey, fontSize: 12)),
+            const SizedBox(height: 20),
+            const Divider(),
+            ListTile(
+              leading: const Icon(Icons.person_outline),
+              title: const Text('Profil Saya'),
+              onTap: () {
+                Navigator.pop(context);
+                // TODO: buka halaman profil
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.logout, color: Colors.red),
+              title: const Text('Keluar',
+                  style: TextStyle(color: Colors.red)),
+              onTap: () {
+                Navigator.pop(context);
+                _logout();
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -112,35 +177,89 @@ class _DashboardScreenState extends State<DashboardScreen> {
       appBar: AppBar(
         backgroundColor: const Color(0xFF1B5E20),
         foregroundColor: Colors.white,
-        title: const Text('Absen MARSA'),
+        title: Row(
+          children: [
+            Container(
+              width: 32, height: 32,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Icon(Icons.school,
+                  size: 20, color: Color(0xFF1B5E20)),
+            ),
+            const SizedBox(width: 10),
+            const Text('Absen MARSA',
+                style: TextStyle(fontWeight: FontWeight.bold)),
+          ],
+        ),
         actions: [
-          IconButton(icon: const Icon(Icons.refresh), onPressed: _loadData),
-          IconButton(icon: const Icon(Icons.logout), onPressed: _logout),
-        ],
-      ),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : RefreshIndicator(
-              onRefresh: _loadData,
-              child: SingleChildScrollView(
-                physics: const AlwaysScrollableScrollPhysics(),
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  children: [
-                    _buildProfileCard(),
-                    const SizedBox(height: 12),
-                    _buildLokasiCard(),
-                    const SizedBox(height: 12),
-                    _buildStatusCard(),
-                    const SizedBox(height: 12),
-                    _buildAbsenButtons(),
-                    const SizedBox(height: 12),
-                    _buildRiwayatButton(),
-                  ],
+          GestureDetector(
+            onTap: _showProfilMenu,
+            child: Container(
+              margin: const EdgeInsets.only(right: 16),
+              child: CircleAvatar(
+                radius: 18,
+                backgroundColor: Colors.white,
+                child: Text(
+                  _pegawai?.nama.isNotEmpty == true
+                      ? _pegawai!.nama[0].toUpperCase()
+                      : '?',
+                  style: const TextStyle(
+                      color: Color(0xFF1B5E20),
+                      fontWeight: FontWeight.bold),
                 ),
               ),
             ),
+          ),
+        ],
+      ),
+      body: _navIndex == 0
+          ? _buildBeranda()
+          : const RiwayatScreen(),
+      bottomNavigationBar: NavigationBar(
+        selectedIndex: _navIndex,
+        onDestinationSelected: (i) => setState(() => _navIndex = i),
+        backgroundColor: Colors.white,
+        indicatorColor: const Color(0xFF1B5E20).withOpacity(0.15),
+        destinations: const [
+          NavigationDestination(
+            icon: Icon(Icons.home_outlined),
+            selectedIcon: Icon(Icons.home, color: Color(0xFF1B5E20)),
+            label: 'Beranda',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.history_outlined),
+            selectedIcon: Icon(Icons.history, color: Color(0xFF1B5E20)),
+            label: 'Riwayat',
+          ),
+        ],
+      ),
     );
+  }
+
+  Widget _buildBeranda() {
+    return _loading
+        ? const Center(child: CircularProgressIndicator())
+        : RefreshIndicator(
+            onRefresh: _loadData,
+            child: SingleChildScrollView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                children: [
+                  _buildProfileCard(),
+                  const SizedBox(height: 12),
+                  _buildLokasiCard(),
+                  const SizedBox(height: 12),
+                  _buildStatusCard(),
+                  const SizedBox(height: 12),
+                  _buildAbsenButtons(),
+                  const SizedBox(height: 24),
+                ],
+              ),
+            ),
+          );
   }
 
   Widget _buildProfileCard() {
@@ -180,10 +299,36 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 ],
               ),
             ),
+            // Jam sekarang
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(
+                  TimeOfDay.now().format(context),
+                  style: const TextStyle(
+                      fontSize: 20, fontWeight: FontWeight.bold),
+                ),
+                Text(
+                  _formatTanggal(),
+                  style: const TextStyle(
+                      fontSize: 11, color: Colors.grey),
+                ),
+              ],
+            ),
           ],
         ),
       ),
     );
+  }
+
+  String _formatTanggal() {
+    final now = DateTime.now();
+    const hari = ['Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab', 'Min'];
+    const bulan = [
+      'Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun',
+      'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'
+    ];
+    return '${hari[now.weekday - 1]}, ${now.day} ${bulan[now.month - 1]} ${now.year}';
   }
 
   Widget _buildLokasiCard() {
@@ -215,8 +360,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ),
               child: _cekLokasi
                   ? SizedBox(
-                      width: 24,
-                      height: 24,
+                      width: 24, height: 24,
                       child: CircularProgressIndicator(
                           strokeWidth: 2, color: color))
                   : Icon(icon, color: color),
@@ -227,8 +371,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    _cekLokasi ? 'Mengecek lokasi...' :
-                    _didalam == true ? 'Dalam Area' : 'Di Luar Area',
+                    _cekLokasi
+                        ? 'Mengecek lokasi...'
+                        : _didalam == true
+                            ? 'Dalam Area Presensi'
+                            : 'Di Luar Area Presensi',
                     style: TextStyle(
                         fontWeight: FontWeight.bold, color: color),
                   ),
@@ -259,9 +406,42 @@ class _DashboardScreenState extends State<DashboardScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Status Hari Ini',
-                style: TextStyle(
-                    fontSize: 15, fontWeight: FontWeight.bold)),
+            Row(
+              children: [
+                const Text('Status Hari Ini',
+                    style: TextStyle(
+                        fontSize: 15, fontWeight: FontWeight.bold)),
+                const Spacer(),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: (sudahMasuk && sudahKeluar)
+                        ? Colors.green.withOpacity(0.1)
+                        : sudahMasuk
+                            ? Colors.orange.withOpacity(0.1)
+                            : Colors.grey.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    (sudahMasuk && sudahKeluar)
+                        ? 'Lengkap'
+                        : sudahMasuk
+                            ? 'Belum Keluar'
+                            : 'Belum Absen',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                      color: (sudahMasuk && sudahKeluar)
+                          ? Colors.green
+                          : sudahMasuk
+                              ? Colors.orange
+                              : Colors.grey,
+                    ),
+                  ),
+                ),
+              ],
+            ),
             const Divider(height: 16),
             Row(
               children: [
@@ -332,15 +512,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 ? null
                 : () async {
                     final result = await Navigator.push(
-  context,
-  MaterialPageRoute(
-    builder: (_) => AbsenScreen(
-      tipe: 'masuk',
-      posisi: _posisi,
-    ),
-  ),
-);
-                    
+                      context,
+                      MaterialPageRoute(
+                          builder: (_) => AbsenScreen(
+                              tipe: 'masuk', posisi: _posisi)),
+                    );
                     if (result == true) _loadData();
                   },
             icon: const Icon(Icons.login),
@@ -361,15 +537,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 ? null
                 : () async {
                     final result = await Navigator.push(
-  context,
-  MaterialPageRoute(
-    builder: (_) => AbsenScreen(
-      tipe: 'keluar',
-      posisi: _posisi,
-    ),
-  ),
-);
-                    
+                      context,
+                      MaterialPageRoute(
+                          builder: (_) => AbsenScreen(
+                              tipe: 'keluar', posisi: _posisi)),
+                    );
                     if (result == true) _loadData();
                   },
             icon: const Icon(Icons.logout),
@@ -384,25 +556,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ),
         ),
       ],
-    );
-  }
-
-  Widget _buildRiwayatButton() {
-    return SizedBox(
-      width: double.infinity,
-      child: OutlinedButton.icon(
-        onPressed: () => Navigator.push(
-          context,
-          MaterialPageRoute(builder: (_) => const RiwayatScreen()),
-        ),
-        icon: const Icon(Icons.history),
-        label: const Text('Riwayat Absensi'),
-        style: OutlinedButton.styleFrom(
-          padding: const EdgeInsets.symmetric(vertical: 14),
-          shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12)),
-        ),
-      ),
     );
   }
 }
