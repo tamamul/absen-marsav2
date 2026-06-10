@@ -332,11 +332,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 ? null
                 : () async {
                     final result = await Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                          builder: (_) =>
-                              const AbsenScreen(tipe: 'masuk')),
-                    );
+  context,
+  MaterialPageRoute(
+    builder: (_) => AbsenScreen(
+      tipe: 'masuk',
+      posisi: _posisi,
+    ),
+  ),
+);
+                    
                     if (result == true) _loadData();
                   },
             icon: const Icon(Icons.login),
@@ -357,11 +361,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 ? null
                 : () async {
                     final result = await Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                          builder: (_) =>
-                              const AbsenScreen(tipe: 'keluar')),
-                    );
+  context,
+  MaterialPageRoute(
+    builder: (_) => AbsenScreen(
+      tipe: 'keluar',
+      posisi: _posisi,
+    ),
+  ),
+);
+                    
                     if (result == true) _loadData();
                   },
             icon: const Icon(Icons.logout),
