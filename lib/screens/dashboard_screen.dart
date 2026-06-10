@@ -19,6 +19,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   PresensiModel? _presensi;
   bool _loading       = true;
   bool _cekLokasi     = false;
+  Position? _posisi;
   bool? _didalam      = null;
   int _jarak          = 0;
   String _pesanLokasi = '';
@@ -75,6 +76,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
       final pos = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.high,
       );
+
+        _posisi = pos;
 
       final res = await ApiService.cekLokasi(pos.latitude, pos.longitude);
 
