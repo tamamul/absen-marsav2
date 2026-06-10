@@ -131,7 +131,7 @@ Future<void> _loadSavedLogin() async {
       ],
     ),
   ),
-      body: SafeArea(
+      child: SafeArea(
         child: Center(
           child: SingleChildScrollView(
             padding: const EdgeInsets.all(24),
