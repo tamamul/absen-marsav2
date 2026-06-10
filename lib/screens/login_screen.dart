@@ -118,19 +118,19 @@ Future<void> _loadSavedLogin() async {
 
 
   @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      body: Container(
-  decoration: const BoxDecoration(
-    gradient: LinearGradient(
-      begin: Alignment.topCenter,
-      end: Alignment.bottomCenter,
-      colors: [
-        Color(0xFF2E7D32),
-        Color(0xFF1B5E20),
-      ],
-    ),
-  ),
+Widget build(BuildContext context) {
+  return Scaffold(
+    body: Container(
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            Color(0xFF2E7D32),
+            Color(0xFF1B5E20),
+          ],
+        ),
+      ),
       child: SafeArea(
         child: Center(
           child: SingleChildScrollView(
@@ -138,44 +138,47 @@ Future<void> _loadSavedLogin() async {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                // Logo
                 Container(
-  width: 120,
-  height: 120,
-  decoration: BoxDecoration(
-    color: Colors.white,
-    borderRadius: BorderRadius.circular(24),
-    boxShadow: const [
-      BoxShadow(
-        blurRadius: 20,
-        color: Colors.black26,
-        offset: Offset(0, 8),
-      ),
-    ],
-  ),
-  child: Padding(
-    padding: const EdgeInsets.all(12),
-    child: Image.asset(
-      'assets/images/logo.png',
-      fit: BoxFit.contain,
-    ),
-  ),
-),
-                
+                  width: 120,
+                  height: 120,
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(24),
+                    boxShadow: const [
+                      BoxShadow(
+                        blurRadius: 20,
+                        color: Colors.black26,
+                        offset: Offset(0, 8),
+                      ),
+                    ],
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Image.asset(
+                      'assets/images/logo.png',
+                      fit: BoxFit.contain,
+                    ),
+                  ),
+                ),
                 const SizedBox(height: 24),
-                const Text('Absen MARSA',
-                    style: TextStyle(
-                        fontSize: 28,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white)),
-                const Text('SMK Ma\'arif 9 Kebumen',
-                    style: TextStyle(color: Colors.white70)),
+                const Text(
+                  'Absen MARSA',
+                  style: TextStyle(
+                    fontSize: 28,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
+                ),
+                const Text(
+                  'SMK Ma\'arif 9 Kebumen',
+                  style: TextStyle(color: Colors.white70),
+                ),
                 const SizedBox(height: 40),
 
-                // Card form
                 Card(
                   shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16)),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
                   child: Padding(
                     padding: const EdgeInsets.all(20),
                     child: Column(
@@ -189,6 +192,7 @@ Future<void> _loadSavedLogin() async {
                           ),
                         ),
                         const SizedBox(height: 16),
+
                         TextField(
                           controller: _passwordCtrl,
                           obscureText: _obscure,
@@ -197,52 +201,71 @@ Future<void> _loadSavedLogin() async {
                             prefixIcon: const Icon(Icons.lock),
                             border: const OutlineInputBorder(),
                             suffixIcon: IconButton(
-                              icon: Icon(_obscure
-                                  ? Icons.visibility
-                                  : Icons.visibility_off),
-                              onPressed: () =>
-                                  setState(() => _obscure = !_obscure),
+                              icon: Icon(
+                                _obscure
+                                    ? Icons.visibility
+                                    : Icons.visibility_off,
+                              ),
+                              onPressed: () {
+                                setState(() {
+                                  _obscure = !_obscure;
+                                });
+                              },
                             ),
                           ),
                         ),
 
-CheckboxListTile(
-  contentPadding: EdgeInsets.zero,
-  value: _rememberMe,
-  title: const Text(
-    'Ingat Username & Password',
-    style: TextStyle(fontSize: 14),
-  ),
-  controlAffinity:
-      ListTileControlAffinity.leading,
-  onChanged: (v) {
-    setState(() {
-      _rememberMe = v ?? true;
-    });
-  },
-),
-
+                        CheckboxListTile(
+                          contentPadding: EdgeInsets.zero,
+                          value: _rememberMe,
+                          title: const Text(
+                            'Ingat Username & Password',
+                            style: TextStyle(fontSize: 14),
+                          ),
+                          controlAffinity:
+                              ListTileControlAffinity.leading,
+                          onChanged: (v) {
+                            setState(() {
+                              _rememberMe = v ?? true;
+                            });
+                          },
+                        ),
 
                         const SizedBox(height: 24),
+
                         SizedBox(
                           width: double.infinity,
                           height: 48,
                           child: ElevatedButton(
-                            onPressed: _loading ? null : _doLogin,
+                            onPressed:
+                                _loading ? null : _doLogin,
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFF1B5E20),
+                              backgroundColor:
+                                  const Color(0xFF1B5E20),
                               foregroundColor: Colors.white,
                               shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(8)),
+                                borderRadius:
+                                    BorderRadius.circular(8),
+                              ),
                             ),
                             child: _loading
-                                ? const CircularProgressIndicator(
-                                    color: Colors.white)
-                                : const Text('MASUK',
+                                ? const SizedBox(
+                                    width: 22,
+                                    height: 22,
+                                    child:
+                                        CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: Colors.white,
+                                    ),
+                                  )
+                                : const Text(
+                                    'MASUK',
                                     style: TextStyle(
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.bold)),
-                          fontWeight: FontWeight.bold)),
+                                      fontSize: 16,
+                                      fontWeight:
+                                          FontWeight.bold,
+                                    ),
+                                  ),
                           ),
                         ),
                       ],
@@ -256,5 +279,4 @@ CheckboxListTile(
       ),
     ),
   );
-}
 }
