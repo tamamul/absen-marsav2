@@ -29,15 +29,19 @@ jobs:
       - name: Get Dependencies
         run: flutter pub get
 
-      - name: Build APK ARMv7
+      - name: Build APK Split ABI
         run: |
           flutter build apk \
             --release \
-            --target-platform android-arm
+            --split-per-abi
+
+      - name: Show APK Files
+        run: |
+          ls -lh build/app/outputs/flutter-apk/
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: absen-marsa-armv7
-          path: build/app/outputs/flutter-apk/app-release.apk
+          name: absen-marsa-apk
+          path: build/app/outputs/flutter-apk/*.apk
           retention-days: 30
