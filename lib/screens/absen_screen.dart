@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
+import 'dart:math' as math;
 import 'dart:io';
 import 'dart:async';
 import '../services/api_service.dart';
@@ -22,6 +23,7 @@ class _AbsenScreenState extends State<AbsenScreen> {
   bool _loading        = true;
   bool _mengirim       = false;
   bool _memproses      = false;
+  int _lastProcess     = 0; // Throttle timestamp
   File? _foto;
   String _pesan        = '';
   String _instruksi    = 'Posisikan wajah di kotak';
@@ -96,6 +98,12 @@ class _AbsenScreenState extends State<AbsenScreen> {
 
   Future<void> _prosesFrame(CameraImage image) async {
     if (_memproses || _livenessOk || !mounted) return;
+    
+    // Throttle: proses maksimal 1x per 300ms
+    final now = DateTime.now().millisecondsSinceEpoch;
+    if (now - _lastProcess < 300) return;
+    _lastProcess = now;
+    
     _memproses = true;
 
     try {
@@ -108,45 +116,40 @@ class _AbsenScreenState extends State<AbsenScreen> {
 
       if (faces.isEmpty) {
         setState(() {
-          _wajahRect   = null;
-          _instruksi   = 'Posisikan wajah di kotak';
+          _wajahRect       = null;
+          _instruksi       = 'Posisikan wajah di kotak';
           _kedipTerdeteksi = false;
-          _mataTerbuka = false;
+          _mataTerbuka     = false;
         });
         _memproses = false;
         return;
       }
 
-      final face = faces.first;
+      final face    = faces.first;
       final leftEye  = face.leftEyeOpenProbability ?? 1.0;
       final rightEye = face.rightEyeOpenProbability ?? 1.0;
       final rataEye  = (leftEye + rightEye) / 2;
 
-      // Update kotak wajah
       setState(() => _wajahRect = face.boundingBox);
 
-      // Logika deteksi kedip
       if (!_kedipTerdeteksi) {
         if (rataEye > 0.7 && !_mataTerbuka) {
-          // Mata terbuka pertama kali
           setState(() {
             _mataTerbuka = true;
             _instruksi   = 'Kedipkan mata Anda';
           });
         } else if (rataEye < 0.3 && _mataTerbuka) {
-          // Mata tertutup = kedip terdeteksi!
           setState(() {
             _kedipTerdeteksi = true;
             _instruksi       = 'Kedipan terdeteksi! ✓';
           });
         }
       } else if (!_livenessOk) {
-        // Kedip sudah, tunggu mata terbuka lagi lalu mulai countdown
         if (rataEye > 0.7) {
           setState(() {
-            _livenessOk  = true;
-            _instruksi   = 'Liveness OK! Bersiap...';
-            _countdown   = 2;
+            _livenessOk = true;
+            _instruksi  = 'Liveness OK! Bersiap...';
+            _countdown  = 2;
           });
           _mulaiCountdown();
         }
@@ -212,6 +215,7 @@ class _AbsenScreenState extends State<AbsenScreen> {
   void _ulangi() {
     _countdownTimer?.cancel();
     _prosesTimer?.cancel();
+    _lastProcess = 0; // Reset throttle
     setState(() {
       _foto            = null;
       _pesan           = '';
@@ -369,35 +373,50 @@ class _AbsenScreenState extends State<AbsenScreen> {
   }
 
   Widget _buildWajahBox(Color color) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final scaleX = constraints.maxWidth / _previewSize!.height;
-        final scaleY = constraints.maxHeight / _previewSize!.width;
+  return LayoutBuilder(
+    builder: (context, constraints) {
+      // Preview size dari kamera: width = lebar sensor, height = tinggi sensor
+      final previewWidth = _previewSize!.width;
+      final previewHeight = _previewSize!.height;
 
-        final left   = _wajahRect!.left * scaleX;
-        final top    = _wajahRect!.top * scaleY;
-        final width  = _wajahRect!.width * scaleX;
-        final height = _wajahRect!.height * scaleY;
+      // Hitung skala agar preview muat di layar (contain/fit)
+      final scaleX = constraints.maxWidth / previewWidth;
+      final scaleY = constraints.maxHeight / previewHeight;
+      final scale = math.min(scaleX, scaleY);
 
-        final boxColor = _livenessOk
-            ? Colors.green
-            : _kedipTerdeteksi
-                ? Colors.orange
-                : color;
+      // Ukuran preview sebenarnya setelah di-scale
+      final scaledPreviewWidth = previewWidth * scale;
+      final scaledPreviewHeight = previewHeight * scale;
 
-        return Positioned(
-          left: left, top: top,
-          width: width, height: height,
-          child: Container(
-            decoration: BoxDecoration(
-              border: Border.all(color: boxColor, width: 3),
-              borderRadius: BorderRadius.circular(8),
-            ),
+      // Offset agar preview di tengah layar (karena pakai min scale)
+      final offsetX = (constraints.maxWidth - scaledPreviewWidth) / 2;
+      final offsetY = (constraints.maxHeight - scaledPreviewHeight) / 2;
+
+      // Posisi kotak wajah
+      final left  = offsetX + (_wajahRect!.left * scale);
+      final top   = offsetY + (_wajahRect!.top * scale);
+      final width  = _wajahRect!.width * scale;
+      final height = _wajahRect!.height * scale;
+
+      final boxColor = _livenessOk
+          ? Colors.green
+          : _kedipTerdeteksi
+              ? Colors.orange
+              : color;
+
+      return Positioned(
+        left: left, top: top,
+        width: width, height: height,
+        child: Container(
+          decoration: BoxDecoration(
+            border: Border.all(color: boxColor, width: 3),
+            borderRadius: BorderRadius.circular(8),
           ),
-        );
-      },
-    );
-  }
+        ),
+      );
+    },
+  );
+}
 
   Widget _buildKonfirmasi(Color color, String label) {
     return Stack(
