@@ -78,34 +78,59 @@ class ApiService {
   }
 
   // ABSEN MASUK
-  static Future<Map<String, dynamic>> absenMasuk(
-      double lat, double lng) async {
-    try {
-      final res = await _dio.post(
-        ApiConfig.absenMasuk,
-        data: {'latitude': lat, 'longitude': lng},
-        options: Options(headers: await _authHeader()),
-      );
-      return res.data;
-    } on DioException catch (e) {
-      return e.response?.data ?? {'status': false, 'message': 'Koneksi gagal'};
-    }
+static Future<Map<String, dynamic>> absenMasuk(
+    double lat, double lng, {File? fotoFile}) async {
+  try {
+    final headers = await _authHeader();
+    FormData formData = FormData.fromMap({
+      'latitude': lat.toString(),
+      'longitude': lng.toString(),
+      if (fotoFile != null)
+        'foto': await MultipartFile.fromFile(
+          fotoFile.path,
+          filename: 'foto_masuk.png',
+        ),
+    });
+    final res = await _dio.post(
+      ApiConfig.absenMasuk,
+      data: formData,
+      options: Options(headers: {
+        'X-Api-Token': headers['X-Api-Token'],
+      }),
+    );
+    return res.data;
+  } on DioException catch (e) {
+    return e.response?.data ?? {'status': false, 'message': 'Koneksi gagal'};
   }
+}
 
-  // ABSEN KELUAR
-  static Future<Map<String, dynamic>> absenKeluar(
-      double lat, double lng) async {
-    try {
-      final res = await _dio.post(
-        ApiConfig.absenKeluar,
-        data: {'latitude': lat, 'longitude': lng},
-        options: Options(headers: await _authHeader()),
-      );
-      return res.data;
-    } on DioException catch (e) {
-      return e.response?.data ?? {'status': false, 'message': 'Koneksi gagal'};
-    }
+// ABSEN KELUAR
+static Future<Map<String, dynamic>> absenKeluar(
+    double lat, double lng, {File? fotoFile}) async {
+  try {
+    final headers = await _authHeader();
+    FormData formData = FormData.fromMap({
+      'latitude': lat.toString(),
+      'longitude': lng.toString(),
+      if (fotoFile != null)
+        'foto': await MultipartFile.fromFile(
+          fotoFile.path,
+          filename: 'foto_keluar.png',
+        ),
+    });
+    final res = await _dio.post(
+      ApiConfig.absenKeluar,
+      data: formData,
+      options: Options(headers: {
+        'X-Api-Token': headers['X-Api-Token'],
+      }),
+    );
+    return res.data;
+  } on DioException catch (e) {
+    return e.response?.data ?? {'status': false, 'message': 'Koneksi gagal'};
   }
+}
+  
 
   // RIWAYAT ABSEN
   static Future<Map<String, dynamic>> getRiwayat() async {
