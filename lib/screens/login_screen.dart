@@ -13,13 +13,6 @@ class LoginScreen extends StatefulWidget {
 }
 
 
-@override
-void dispose() {
-  _loginCtrl.dispose();
-  _passwordCtrl.dispose();
-  super.dispose();
-}
-
 class _LoginScreenState extends State<LoginScreen> {
   final _loginCtrl    = TextEditingController();
   final _passwordCtrl = TextEditingController();
@@ -93,6 +86,13 @@ if (_rememberMe) {
     ScaffoldMessenger.of(context)
         .showSnackBar(SnackBar(content: Text(msg)));
   }
+
+@override
+void dispose() {
+  _loginCtrl.dispose();
+  _passwordCtrl.dispose();
+  super.dispose();
+}
 
 
 @override
