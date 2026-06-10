@@ -1,53 +1,43 @@
-name: marsa_cbt_app
-description: Marsa CBT — Client Peserta Ujian
+name: absen_marsa
+description: Aplikasi Absensi MARSA - SMK Ma'arif 9 Kebumen
+
 publish_to: 'none'
 version: 1.0.0+1
 
 environment:
-  sdk: ^3.8.0
+  sdk: '>=3.0.0 <4.0.0'
 
 dependencies:
   flutter:
     sdk: flutter
-
-  flutter_bloc: ^9.1.1
-  equatable: ^2.0.5
-  wakelock_plus: ^1.2.8
-
-  # Navigation
-  go_router: ^15.1.1
-
+  
   # HTTP
   dio: ^5.4.0
-
+  
   # Storage
-  flutter_secure_storage: ^9.0.0
-  shared_preferences: ^2.2.3
-
+  shared_preferences: ^2.2.2
+  
+  # GPS
+  geolocator: ^11.0.0
+  
+  # Kamera & Face
+  camera: ^0.10.5+9
+  google_mlkit_face_detection: ^0.11.0
+  
+  # Image
+  image_picker: ^1.0.7
+  
   # UI
-  google_fonts: ^6.2.1
-  cached_network_image: ^3.4.1
-
-  # Utils
-  device_info_plus: ^10.1.0
-  connectivity_plus: ^6.0.3
-  crypto: ^3.0.3
-  intl: ^0.19.0
-  package_info_plus: ^8.3.0
-
-  # iOS
-  cupertino_icons: ^1.0.2
-
+  cupertino_icons: ^1.0.6
+  flutter_spinkit: ^5.2.0
+  cached_network_image: ^3.3.1
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
-
-  flutter_lints: ^5.0.0
-
-  # bloc_test: ^9.1.7
+  flutter_lints: ^3.0.0
 
 flutter:
   uses-material-design: true
   assets:
-    - assets/fonts/
+    - assets/images/
