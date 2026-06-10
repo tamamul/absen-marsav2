@@ -11,6 +11,8 @@ class ApiConfig {
   static const String absenKeluar  = '$baseUrl/api/absen/keluar';
   static const String absenRiwayat = '$baseUrl/api/absen/riwayat';
 
+  static const String cekLokasi = '$baseUrl/api/absen/cek-lokasi';
+
   static const String tokenKey     = 'api_token';
   static const String userKey      = 'user_data';
 }
