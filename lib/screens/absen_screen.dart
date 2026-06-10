@@ -3,6 +3,7 @@ import 'package:camera/camera.dart';
 import 'dart:io';
 import '../services/api_service.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
 
 class AbsenScreen extends StatefulWidget {
   final String tipe;
@@ -20,6 +21,8 @@ class _AbsenScreenState extends State<AbsenScreen> {
   bool _mengirim     = false;
   File? _foto;
   String _pesan      = '';
+  bool _deteksiWajah = false;
+  String _pesanWajah = '';
 
   @override
   void initState() {
@@ -72,21 +75,50 @@ class _AbsenScreenState extends State<AbsenScreen> {
   }
 
   Future<void> _ambilFoto() async {
-    if (_cameraController == null || !_cameraReady) return;
-    try {
-      final file = await _cameraController!.takePicture();
-      setState(() => _foto = File(file.path));
-    } catch (e) {
-      setState(() => _pesan = 'Gagal ambil foto: $e');
-    }
-  }
+  if (_cameraController == null || !_cameraReady) return;
+  try {
+    setState(() => _deteksiWajah = true);
 
-  void _ulangi() {
+    final file = await _cameraController!.takePicture();
+
+    // Deteksi wajah
+    final inputImage = InputImage.fromFilePath(file.path);
+    final detector  = FaceDetector(
+      options: FaceDetectorOptions(
+        performanceMode: FaceDetectorMode.accurate,
+      ),
+    );
+    final faces = await detector.processImage(inputImage);
+    await detector.close();
+
+    if (faces.isEmpty) {
+      setState(() {
+        _deteksiWajah = false;
+        _pesanWajah   = 'Wajah tidak terdeteksi. Coba lagi.';
+      });
+      return;
+    }
+
+    if (faces.length > 1) {
+      setState(() {
+        _deteksiWajah = false;
+        _pesanWajah   = 'Terdeteksi lebih dari 1 wajah. Pastikan hanya wajah Anda.';
+      });
+      return;
+    }
+
     setState(() {
-      _foto  = null;
-      _pesan = '';
+      _foto         = File(file.path);
+      _deteksiWajah = false;
+      _pesanWajah   = '';
+    });
+  } catch (e) {
+    setState(() {
+      _deteksiWajah = false;
+      _pesan        = 'Gagal ambil foto: $e';
     });
   }
+}
 
   Future<void> _kirimAbsen() async {
     if (_foto == null) return;
@@ -180,26 +212,42 @@ if (widget.tipe == 'masuk') {
 
         // Tombol foto bawah
         Positioned(
-          bottom: 48, left: 0, right: 0,
-          child: Center(
-            child: GestureDetector(
-              onTap: _ambilFoto,
-              child: Container(
-                width: 80, height: 80,
-                decoration: BoxDecoration(
-                  color: color,
-                  shape: BoxShape.circle,
-                  border: Border.all(color: Colors.white, width: 4),
-                ),
-                child: const Icon(Icons.camera_alt,
-                    size: 40, color: Colors.white),
-              ),
+  bottom: 48, left: 0, right: 0,
+  child: Column(
+    children: [
+      if (_pesanWajah.isNotEmpty)
+        Container(
+          margin: const EdgeInsets.only(bottom: 12),
+          padding: const EdgeInsets.symmetric(
+              horizontal: 16, vertical: 8),
+          decoration: BoxDecoration(
+            color: Colors.red[900],
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Text(_pesanWajah,
+              style: const TextStyle(color: Colors.white),
+              textAlign: TextAlign.center),
+        ),
+      Center(
+        child: GestureDetector(
+          onTap: (_deteksiWajah) ? null : _ambilFoto,
+          child: Container(
+            width: 80, height: 80,
+            decoration: BoxDecoration(
+              color: color,
+              shape: BoxShape.circle,
+              border: Border.all(color: Colors.white, width: 4),
             ),
+            child: _deteksiWajah
+                ? const CircularProgressIndicator(color: Colors.white)
+                : const Icon(Icons.camera_alt,
+                    size: 40, color: Colors.white),
           ),
         ),
-      ],
-    );
-  }
+      ),
+    ],
+  ),
+),
 
   // Tampilan konfirmasi setelah foto
   Widget _buildKonfirmasi(Color color, String label) {
