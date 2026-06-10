@@ -25,9 +25,8 @@ android {
         applicationId = "com.gradoid.scalable_flutter_app_starter"
         minSdk = 24
         targetSdk = flutter.targetSdkVersion
-        versionCode = flutter.versionCode
-        versionName = flutter.versionName
-    }
+        versionCode = flutter.versionCode()
+        versionName = flutter.versionName()
 
     buildTypes {
         release {
