@@ -12,11 +12,20 @@ class LoginScreen extends StatefulWidget {
   State<LoginScreen> createState() => _LoginScreenState();
 }
 
+
+@override
+void dispose() {
+  _loginCtrl.dispose();
+  _passwordCtrl.dispose();
+  super.dispose();
+}
+
 class _LoginScreenState extends State<LoginScreen> {
   final _loginCtrl    = TextEditingController();
   final _passwordCtrl = TextEditingController();
   bool _loading       = false;
   bool _obscure       = true;
+  bool _rememberMe = true;
 
   Future<void> _doLogin() async {
     if (_loginCtrl.text.isEmpty || _passwordCtrl.text.isEmpty) {
@@ -38,8 +47,37 @@ class _LoginScreenState extends State<LoginScreen> {
       final user  = res['data']['user'];
 
       await ApiService.saveToken(token);
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(ApiConfig.userKey, jsonEncode(user));
+
+final prefs =
+    await SharedPreferences.getInstance();
+
+await prefs.setString(
+    ApiConfig.userKey,
+    jsonEncode(user));
+
+if (_rememberMe) {
+  await prefs.setString(
+      'saved_username',
+      _loginCtrl.text.trim());
+
+  await prefs.setString(
+      'saved_password',
+      _passwordCtrl.text);
+
+  await prefs.setBool(
+      'remember_me',
+      true);
+} else {
+  await prefs.remove(
+      'saved_username');
+
+  await prefs.remove(
+      'saved_password');
+
+  await prefs.setBool(
+      'remember_me',
+      false);
+}
 
       if (!mounted) return;
       Navigator.pushReplacement(
@@ -56,10 +94,43 @@ class _LoginScreenState extends State<LoginScreen> {
         .showSnackBar(SnackBar(content: Text(msg)));
   }
 
+
+@override
+void initState() {
+  super.initState();
+  _loadSavedLogin();
+}
+
+Future<void> _loadSavedLogin() async {
+  final prefs = await SharedPreferences.getInstance();
+
+  _loginCtrl.text =
+      prefs.getString('saved_username') ?? '';
+
+  _passwordCtrl.text =
+      prefs.getString('saved_password') ?? '';
+
+  setState(() {
+    _rememberMe =
+        prefs.getBool('remember_me') ?? true;
+  });
+}
+
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF1B5E20),
+      body: Container(
+  decoration: const BoxDecoration(
+    gradient: LinearGradient(
+      begin: Alignment.topCenter,
+      end: Alignment.bottomCenter,
+      colors: [
+        Color(0xFF2E7D32),
+        Color(0xFF1B5E20),
+      ],
+    ),
+  ),
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
@@ -69,14 +140,28 @@ class _LoginScreenState extends State<LoginScreen> {
               children: [
                 // Logo
                 Container(
-                  width: 100, height: 100,
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: const Icon(Icons.school,
-                      size: 60, color: Color(0xFF1B5E20)),
-                ),
+  width: 120,
+  height: 120,
+  decoration: BoxDecoration(
+    color: Colors.white,
+    borderRadius: BorderRadius.circular(24),
+    boxShadow: const [
+      BoxShadow(
+        blurRadius: 20,
+        color: Colors.black26,
+        offset: Offset(0, 8),
+      ),
+    ],
+  ),
+  child: Padding(
+    padding: const EdgeInsets.all(12),
+    child: Image.asset(
+      'assets/images/logo.png',
+      fit: BoxFit.contain,
+    ),
+  ),
+),
+                
                 const SizedBox(height: 24),
                 const Text('Absen MARSA',
                     style: TextStyle(
@@ -120,6 +205,24 @@ class _LoginScreenState extends State<LoginScreen> {
                             ),
                           ),
                         ),
+
+CheckboxListTile(
+  contentPadding: EdgeInsets.zero,
+  value: _rememberMe,
+  title: const Text(
+    'Ingat Username & Password',
+    style: TextStyle(fontSize: 14),
+  ),
+  controlAffinity:
+      ListTileControlAffinity.leading,
+  onChanged: (v) {
+    setState(() {
+      _rememberMe = v ?? true;
+    });
+  },
+),
+
+
                         const SizedBox(height: 24),
                         SizedBox(
                           width: double.infinity,
