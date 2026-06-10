@@ -288,115 +288,133 @@ class _AbsenScreenState extends State<AbsenScreen> {
   }
 
   Widget _buildKamera(Color color) {
-    return Stack(
-      children: [
-        // Preview kamera
-        SizedBox.expand(child: CameraPreview(_cameraController!)),
-
-        // Kotak tracking wajah
-        if (_wajahRect != null && _previewSize != null)
-          _buildWajahBox(color),
-
-        // Instruksi atas
-        Positioned(
-          top: 16, left: 16, right: 16,
-          child: Center(
-            child: Container(
-              padding: const EdgeInsets.symmetric(
-                  horizontal: 16, vertical: 10),
-              decoration: BoxDecoration(
-                color: Colors.black54,
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    _livenessOk
-                        ? Icons.check_circle
-                        : _kedipTerdeteksi
-                            ? Icons.remove_red_eye
-                            : Icons.face,
-                    color: _livenessOk
-                        ? Colors.green
-                        : _kedipTerdeteksi
-                            ? Colors.orange
-                            : Colors.white,
-                    size: 20,
-                  ),
-                  const SizedBox(width: 8),
-                  Text(_instruksi,
-                      style: const TextStyle(
-                          color: Colors.white, fontSize: 14)),
-                ],
-              ),
+  final previewSize = _previewSize;
+  
+  return Stack(
+    alignment: Alignment.center,
+    children: [
+      // Preview kamera dengan aspect ratio yang benar
+      if (previewSize != null)
+        Center(
+          child: AspectRatio(
+            aspectRatio: previewSize.width / previewSize.height,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: CameraPreview(_cameraController!),
             ),
           ),
         ),
 
-        // Countdown
-        if (_countdown > 0)
-          Center(
-            child: Container(
-              width: 80, height: 80,
-              decoration: BoxDecoration(
-                color: color.withOpacity(0.85),
-                shape: BoxShape.circle,
-              ),
-              child: Center(
-                child: Text('$_countdown',
+      // Kotak tracking wajah
+      if (_wajahRect != null && previewSize != null)
+        _buildWajahBox(color, previewSize),
+
+      // Instruksi atas
+      Positioned(
+        top: 16, left: 16, right: 16,
+        child: Center(
+          child: Container(
+            padding: const EdgeInsets.symmetric(
+                horizontal: 16, vertical: 10),
+            decoration: BoxDecoration(
+              color: Colors.black54,
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  _livenessOk
+                      ? Icons.check_circle
+                      : _kedipTerdeteksi
+                          ? Icons.remove_red_eye
+                          : Icons.face,
+                  color: _livenessOk
+                      ? Colors.green
+                      : _kedipTerdeteksi
+                          ? Colors.orange
+                          : Colors.white,
+                  size: 20,
+                ),
+                const SizedBox(width: 8),
+                Text(_instruksi,
                     style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 48,
-                        fontWeight: FontWeight.bold)),
-              ),
+                        color: Colors.white, fontSize: 14)),
+              ],
             ),
           ),
+        ),
+      ),
 
-        // Error
-        if (_pesan.isNotEmpty)
-          Positioned(
-            bottom: 20, left: 16, right: 16,
-            child: Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: Colors.red[900],
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Text(_pesan,
-                  style: const TextStyle(color: Colors.white),
-                  textAlign: TextAlign.center),
-            ),
+      // Countdown
+      if (_countdown > 0)
+        Container(
+          width: 80, height: 80,
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.85),
+            shape: BoxShape.circle,
           ),
-      ],
-    );
-  }
+          child: Center(
+            child: Text('$_countdown',
+                style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 48,
+                    fontWeight: FontWeight.bold)),
+          ),
+        ),
 
-  Widget _buildWajahBox(Color color) {
+      // Error
+      if (_pesan.isNotEmpty)
+        Positioned(
+          bottom: 20, left: 16, right: 16,
+          child: Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: Colors.red[900],
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Text(_pesan,
+                style: const TextStyle(color: Colors.white),
+                textAlign: TextAlign.center),
+          ),
+        ),
+    ],
+  );
+}
+
+Widget _buildWajahBox(Color color, Size previewSize) {
   return LayoutBuilder(
     builder: (context, constraints) {
-      // Preview size dari kamera: width = lebar sensor, height = tinggi sensor
-      final previewWidth = _previewSize!.width;
-      final previewHeight = _previewSize!.height;
+      // Hitung aspect ratio preview
+      final previewRatio = previewSize.width / previewSize.height;
+      final screenRatio = constraints.maxWidth / constraints.maxHeight;
+      
+      // Hitung ukuran preview yang sebenarnya di layar
+      double displayWidth, displayHeight;
+      if (previewRatio > screenRatio) {
+        // Preview lebih lebar dari layar
+        displayWidth = constraints.maxWidth;
+        displayHeight = constraints.maxWidth / previewRatio;
+      } else {
+        // Preview lebih tinggi dari layar
+        displayHeight = constraints.maxHeight;
+        displayWidth = constraints.maxHeight * previewRatio;
+      }
 
-      // Hitung skala agar preview muat di layar (contain/fit)
-      final scaleX = constraints.maxWidth / previewWidth;
-      final scaleY = constraints.maxHeight / previewHeight;
-      final scale = math.min(scaleX, scaleY);
+      // Offset agar preview di tengah
+      final offsetX = (constraints.maxWidth - displayWidth) / 2;
+      final offsetY = (constraints.maxHeight - displayHeight) / 2;
 
-      // Ukuran preview sebenarnya setelah di-scale
-      final scaledPreviewWidth = previewWidth * scale;
-      final scaledPreviewHeight = previewHeight * scale;
+      // Skala dari ukuran preview kamera ke ukuran display
+      final scaleX = displayWidth / previewSize.width;
+      final scaleY = displayHeight / previewSize.height;
 
-      // Offset agar preview di tengah layar (karena pakai min scale)
-      final offsetX = (constraints.maxWidth - scaledPreviewWidth) / 2;
-      final offsetY = (constraints.maxHeight - scaledPreviewHeight) / 2;
-
-      // Posisi kotak wajah
-      final left  = offsetX + (_wajahRect!.left * scale);
-      final top   = offsetY + (_wajahRect!.top * scale);
-      final width  = _wajahRect!.width * scale;
-      final height = _wajahRect!.height * scale;
+      // Mapping kotak wajah
+      // Koordinat dari ML Kit: x horizontal, y vertikal
+      final left = offsetX + (_wajahRect!.left * scaleX);
+      final top = offsetY + (_wajahRect!.top * scaleY);
+      final width = _wajahRect!.width * scaleX;
+      final height = _wajahRect!.height * scaleY;
 
       final boxColor = _livenessOk
           ? Colors.green
@@ -405,8 +423,10 @@ class _AbsenScreenState extends State<AbsenScreen> {
               : color;
 
       return Positioned(
-        left: left, top: top,
-        width: width, height: height,
+        left: left,
+        top: top,
+        width: width,
+        height: height,
         child: Container(
           decoration: BoxDecoration(
             border: Border.all(color: boxColor, width: 3),
