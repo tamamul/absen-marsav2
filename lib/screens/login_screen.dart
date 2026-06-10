@@ -242,6 +242,7 @@ CheckboxListTile(
                                     style: TextStyle(
                                         fontSize: 16,
                                         fontWeight: FontWeight.bold)),
+                          fontWeight: FontWeight.bold)),
                           ),
                         ),
                       ],
@@ -253,6 +254,7 @@ CheckboxListTile(
           ),
         ),
       ),
-    );
-  }
+    ),
+  );
+}
 }
