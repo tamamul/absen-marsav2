@@ -2,10 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
 import 'dart:io';
 import '../services/api_service.dart';
+import 'package:geolocator/geolocator.dart';
 
 class AbsenScreen extends StatefulWidget {
   final String tipe;
-  const AbsenScreen({super.key, required this.tipe});
+  final Position? posisi;
+  const AbsenScreen({super.key, required this.tipe, this.posisi});
 
   @override
   State<AbsenScreen> createState() => _AbsenScreenState();
@@ -95,11 +97,14 @@ class _AbsenScreenState extends State<AbsenScreen> {
     });
 
     Map<String, dynamic> res;
-    if (widget.tipe == 'masuk') {
-      res = await ApiService.absenMasuk(0, 0, fotoFile: _foto);
-    } else {
-      res = await ApiService.absenKeluar(0, 0, fotoFile: _foto);
-    }
+    final lat = widget.posisi?.latitude ?? 0.0;
+final lng = widget.posisi?.longitude ?? 0.0;
+
+if (widget.tipe == 'masuk') {
+  res = await ApiService.absenMasuk(lat, lng, fotoFile: _foto);
+} else {
+  res = await ApiService.absenKeluar(lat, lng, fotoFile: _foto);
+}
 
     setState(() => _mengirim = false);
 
