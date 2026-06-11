@@ -6,6 +6,7 @@ import '../models/presensi_model.dart';
 import 'absen_screen.dart';
 import 'login_screen.dart';
 import 'riwayat_screen.dart';
+import 'profil_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -152,7 +153,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
               title: const Text('Profil Saya'),
               onTap: () {
                 Navigator.pop(context);
-                // TODO: buka halaman profil
+                Navigator.push(
+  context,
+  MaterialPageRoute(
+    builder: (_) => ProfilScreen(pegawai: _pegawai),
+  ),
+);
               },
             ),
             ListTile(
