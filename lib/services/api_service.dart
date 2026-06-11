@@ -151,6 +151,21 @@ static Future<Map<String, dynamic>> cekLokasi(
 }
 
 
+static Future<Map<String, dynamic>> getGaleriHadir({
+  required String tanggal,
+}) async {
+  try {
+    final res = await _dio.get(
+      '${ApiConfig.galeri}?tanggal=$tanggal',
+      options: Options(headers: await _authHeader()),
+    );
+    return res.data;
+  } on DioException catch (e) {
+    return e.response?.data ?? {'status': false, 'message': 'Koneksi gagal'};
+  }
+}
+
+
   // RIWAYAT ABSEN
   static Future<Map<String, dynamic>> getRiwayat() async {
     try {
