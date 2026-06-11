@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:sqflite/sqflite.dart';
+import 'package:path/path.dart' as p;
 import '../services/api_service.dart';
-import '../models/presensi_model.dart';
 
 class GaleriScreen extends StatefulWidget {
   const GaleriScreen({super.key});
@@ -9,11 +10,114 @@ class GaleriScreen extends StatefulWidget {
   State<GaleriScreen> createState() => _GaleriScreenState();
 }
 
+// ── Cache helper ──────────────────────────────────────────────
+class _GaleriCache {
+  static Database? _db;
+
+  static Future<Database> get db async {
+    _db ??= await _init();
+    return _db!;
+  }
+
+  static Future<Database> _init() async {
+    final path = p.join(await getDatabasesPath(), 'galeri_cache.db');
+    return openDatabase(path, version: 1, onCreate: (db, _) async {
+      await db.execute('''
+        CREATE TABLE galeri (
+          id TEXT PRIMARY KEY,
+          tanggal TEXT,
+          nama TEXT,
+          jabatan TEXT,
+          jam_masuk TEXT,
+          jam_keluar TEXT,
+          foto_masuk TEXT,
+          foto_keluar TEXT,
+          cached_at INTEGER
+        )
+      ''');
+    });
+  }
+
+  static Future<void> save(
+      String tanggal, List<Map<String, dynamic>> list) async {
+    final database = await db;
+    final batch    = database.batch();
+    final now      = DateTime.now().millisecondsSinceEpoch;
+    // Hapus data tanggal ini dulu
+    await database.delete('galeri', where: 'tanggal = ?', whereArgs: [tanggal]);
+    for (final item in list) {
+      batch.insert('galeri', {
+        'id':          item['id']?.toString() ?? '',
+        'tanggal':     tanggal,
+        'nama':        item['nama'] ?? '',
+        'jabatan':     item['jabatan'] ?? '',
+        'jam_masuk':   item['jam_masuk'] ?? '',
+        'jam_keluar':  item['jam_keluar'] ?? '',
+        'foto_masuk':  item['foto_masuk'] ?? '',
+        'foto_keluar': item['foto_keluar'] ?? '',
+        'cached_at':   now,
+      });
+    }
+    await batch.commit(noResult: true);
+  }
+
+  static Future<List<Map<String, dynamic>>> get(String tanggal) async {
+    final database = await db;
+    return database.query('galeri',
+        where: 'tanggal = ?', whereArgs: [tanggal]);
+  }
+
+  static Future<bool> hasCache(String tanggal) async {
+    final database = await db;
+    final r = await database.rawQuery(
+        'SELECT COUNT(*) as c FROM galeri WHERE tanggal = ?', [tanggal]);
+    return (r.first['c'] as int) > 0;
+  }
+
+  static Future<DateTime?> lastCached(String tanggal) async {
+    final database = await db;
+    final r = await database.rawQuery(
+        'SELECT MAX(cached_at) as last FROM galeri WHERE tanggal = ?',
+        [tanggal]);
+    final last = r.first['last'];
+    if (last == null) return null;
+    return DateTime.fromMillisecondsSinceEpoch(last as int);
+  }
+
+  static Future<void> clearDate(String tanggal) async {
+    final database = await db;
+    await database.delete('galeri',
+        where: 'tanggal = ?', whereArgs: [tanggal]);
+  }
+
+  static Future<void> clearAll() async {
+    final database = await db;
+    await database.delete('galeri');
+  }
+
+  static Future<int> totalRows() async {
+    final database = await db;
+    final r = await database.rawQuery(
+        'SELECT COUNT(*) as c FROM galeri');
+    return r.first['c'] as int;
+  }
+}
+
+// ── Screen ────────────────────────────────────────────────────
+class GaleriScreen extends StatefulWidget {
+  const GaleriScreen({super.key});
+
+  @override
+  State<GaleriScreen> createState() => _GaleriScreenState();
+}
+
 class _GaleriScreenState extends State<GaleriScreen> {
-  List<Map<String, dynamic>> _data = [];
-  bool _loading = true;
-  bool _newerFirst = true;
-  DateTime _tanggal = DateTime.now();
+  List<Map<String, dynamic>> _data     = [];
+  bool   _loading    = false;
+  bool   _newerFirst = true;
+  bool   _fromCache  = false;
+  DateTime _tanggal  = DateTime.now();
+  DateTime? _lastCached;
 
   @override
   void initState() {
@@ -21,30 +125,49 @@ class _GaleriScreenState extends State<GaleriScreen> {
     _loadData();
   }
 
-  Future<void> _loadData() async {
-    setState(() => _loading = true);
-    final res = await ApiService.getGaleriHadir(
-      tanggal: _formatTanggal(_tanggal),
-    );
-    if (res['status'] == true) {
-      List data = res['data'] ?? [];
+  String _fmt(DateTime dt) =>
+      '${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')}';
+
+  String _fmtLabel(DateTime dt) {
+    const hari  = ['Senin','Selasa','Rabu','Kamis','Jumat','Sabtu','Minggu'];
+    const bulan = ['Jan','Feb','Mar','Apr','Mei','Jun',
+                   'Jul','Agu','Sep','Okt','Nov','Des'];
+    final isToday = dt.day == DateTime.now().day &&
+        dt.month == DateTime.now().month &&
+        dt.year == DateTime.now().year;
+    if (isToday) return 'Hari Ini';
+    return '${hari[dt.weekday - 1]}, ${dt.day} ${bulan[dt.month - 1]} ${dt.year}';
+  }
+
+  Future<void> _loadData({bool forceRefresh = false}) async {
+    setState(() { _loading = true; _fromCache = false; });
+    final tanggal = _fmt(_tanggal);
+
+    if (!forceRefresh && await _GaleriCache.hasCache(tanggal)) {
+      final cached = await _GaleriCache.get(tanggal);
+      _lastCached  = await _GaleriCache.lastCached(tanggal);
       setState(() {
-        _data = List<Map<String, dynamic>>.from(data);
-        _loading = false;
+        _data      = List<Map<String, dynamic>>.from(cached);
+        _loading   = false;
+        _fromCache = true;
+      });
+      return;
+    }
+
+    // Fetch dari server
+    final res = await ApiService.getGaleriHadir(tanggal: tanggal);
+    if (res['status'] == true) {
+      final list = List<Map<String, dynamic>>.from(res['data'] ?? []);
+      await _GaleriCache.save(tanggal, list);
+      _lastCached = DateTime.now();
+      setState(() {
+        _data      = list;
+        _loading   = false;
+        _fromCache = false;
       });
     } else {
       setState(() { _data = []; _loading = false; });
     }
-  }
-
-  String _formatTanggal(DateTime dt) =>
-      '${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')}';
-
-  String _formatTanggalLabel(DateTime dt) {
-    const hari  = ['Senin','Selasa','Rabu','Kamis','Jumat','Sabtu','Minggu'];
-    const bulan = ['Jan','Feb','Mar','Apr','Mei','Jun',
-                   'Jul','Agu','Sep','Okt','Nov','Des'];
-    return '${hari[dt.weekday - 1]}, ${dt.day} ${bulan[dt.month - 1]} ${dt.year}';
   }
 
   Future<void> _pilihTanggal() async {
@@ -53,11 +176,10 @@ class _GaleriScreenState extends State<GaleriScreen> {
       initialDate: _tanggal,
       firstDate: DateTime(2024),
       lastDate: DateTime.now(),
-      builder: (context, child) => Theme(
-        data: Theme.of(context).copyWith(
+      builder: (c, child) => Theme(
+        data: Theme.of(c).copyWith(
           colorScheme: const ColorScheme.light(
-            primary: Color(0xFF1B5E20),
-          ),
+              primary: Color(0xFF1B5E20)),
         ),
         child: child!,
       ),
@@ -68,45 +190,86 @@ class _GaleriScreenState extends State<GaleriScreen> {
     }
   }
 
-  Future<void> _clearCache() async {
-    showDialog(
+  Future<void> _showCacheInfo() async {
+    final total = await _GaleriCache.totalRows();
+    if (!mounted) return;
+    showModalBottomSheet(
       context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('Clear Cache'),
-        content: const Text(
-            'Hapus cache gambar yang tersimpan di perangkat?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Batal'),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              Navigator.pop(context);
-              // Clear image cache Flutter
-              imageCache.clear();
-              imageCache.clearLiveImages();
-              if (!mounted) return;
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Cache berhasil dihapus'),
-                  backgroundColor: Colors.green,
-                ),
-              );
-              _loadData();
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red,
-              foregroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (_) => Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 40, height: 4,
+              margin: const EdgeInsets.only(bottom: 16),
+              decoration: BoxDecoration(
+                  color: Colors.grey[300],
+                  borderRadius: BorderRadius.circular(2)),
             ),
-            child: const Text('Hapus'),
-          ),
-        ],
+            const Text('Manajemen Cache',
+                style: TextStyle(
+                    fontSize: 16, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 16),
+            ListTile(
+              leading: const CircleAvatar(
+                  backgroundColor: Colors.blue,
+                  child: Icon(Icons.storage, color: Colors.white)),
+              title: const Text('Total data ter-cache'),
+              subtitle: Text('$total entri dari semua tanggal'),
+            ),
+            if (_lastCached != null)
+              ListTile(
+                leading: const CircleAvatar(
+                    backgroundColor: Colors.green,
+                    child: Icon(Icons.update, color: Colors.white)),
+                title: const Text('Cache tanggal ini'),
+                subtitle: Text(
+                    '${_lastCached!.day}/${_lastCached!.month}/${_lastCached!.year} '
+                    '${_lastCached!.hour}:${_lastCached!.minute.toString().padLeft(2, '0')}'),
+              ),
+            const Divider(),
+            ListTile(
+              leading: const CircleAvatar(
+                  backgroundColor: Colors.orange,
+                  child: Icon(Icons.refresh, color: Colors.white)),
+              title: const Text('Refresh tanggal ini'),
+              subtitle: const Text('Ambil ulang dari server'),
+              onTap: () {
+                Navigator.pop(context);
+                _loadData(forceRefresh: true);
+              },
+            ),
+            ListTile(
+              leading: const CircleAvatar(
+                  backgroundColor: Colors.red,
+                  child: Icon(Icons.delete, color: Colors.white)),
+              title: const Text('Hapus semua cache',
+                  style: TextStyle(color: Colors.red)),
+              subtitle: const Text('Data semua tanggal dihapus'),
+              onTap: () async {
+                Navigator.pop(context);
+                await _GaleriCache.clearAll();
+                imageCache.clear();
+                imageCache.clearLiveImages();
+                if (!mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                      content: Text('Semua cache dihapus'),
+                      backgroundColor: Colors.green),
+                );
+                _loadData(forceRefresh: true);
+              },
+            ),
+          ],
+        ),
       ),
     );
   }
 
-  List<Map<String, dynamic>> get _sortedData {
+  List<Map<String, dynamic>> get _sorted {
     final list = List<Map<String, dynamic>>.from(_data);
     list.sort((a, b) {
       final jamA = a['jam_masuk'] ?? '';
@@ -125,6 +288,11 @@ class _GaleriScreenState extends State<GaleriScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final hadir    = _data.length;
+    final lengkap  = _data.where(
+        (d) => (d['jam_keluar'] ?? '00:00:00') != '00:00:00').length;
+    final belum    = hadir - lengkap;
+
     return Scaffold(
       backgroundColor: const Color(0xFFF5F5F5),
       appBar: AppBar(
@@ -132,20 +300,18 @@ class _GaleriScreenState extends State<GaleriScreen> {
         foregroundColor: Colors.white,
         title: const Text('Galeri Kehadiran'),
         actions: [
-          // Sort button
           IconButton(
             icon: Icon(_newerFirst
                 ? Icons.arrow_downward
                 : Icons.arrow_upward),
-            tooltip: _newerFirst ? 'Terbaru' : 'Terlama',
+            tooltip: _newerFirst ? 'Terbaru dulu' : 'Terlama dulu',
             onPressed: () =>
                 setState(() => _newerFirst = !_newerFirst),
           ),
-          // Clear cache
           IconButton(
-            icon: const Icon(Icons.cleaning_services_outlined),
-            tooltip: 'Clear Cache',
-            onPressed: _clearCache,
+            icon: const Icon(Icons.storage_outlined),
+            tooltip: 'Cache',
+            onPressed: _showCacheInfo,
           ),
         ],
       ),
@@ -154,34 +320,53 @@ class _GaleriScreenState extends State<GaleriScreen> {
           // Pilih tanggal
           Container(
             color: const Color(0xFF1B5E20),
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-              child: GestureDetector(
-                onTap: _pilihTanggal,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 16, vertical: 10),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.15),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.white30),
-                  ),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.calendar_today,
-                          color: Colors.white, size: 18),
-                      const SizedBox(width: 10),
-                      Text(
-                        _formatTanggalLabel(_tanggal),
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+            child: GestureDetector(
+              onTap: _pilihTanggal,
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 16, vertical: 10),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.white30),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.calendar_today,
+                        color: Colors.white, size: 18),
+                    const SizedBox(width: 10),
+                    Text(_fmtLabel(_tanggal),
                         style: const TextStyle(
                             color: Colors.white,
-                            fontWeight: FontWeight.w500),
+                            fontWeight: FontWeight.w500)),
+                    const Spacer(),
+                    // Cache indicator
+                    if (_fromCache)
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: Colors.white24,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.inventory_2,
+                                size: 10, color: Colors.white70),
+                            SizedBox(width: 3),
+                            Text('cache',
+                                style: TextStyle(
+                                    fontSize: 10,
+                                    color: Colors.white70)),
+                          ],
+                        ),
                       ),
-                      const Spacer(),
-                      const Icon(Icons.arrow_drop_down,
-                          color: Colors.white),
-                    ],
-                  ),
+                    const SizedBox(width: 8),
+                    const Icon(Icons.arrow_drop_down,
+                        color: Colors.white),
+                  ],
                 ),
               ),
             ),
@@ -195,25 +380,20 @@ class _GaleriScreenState extends State<GaleriScreen> {
                   horizontal: 16, vertical: 10),
               child: Row(
                 children: [
-                  _buildChip(Icons.people, '${_data.length} Hadir',
-                      Colors.green),
+                  _chip(Icons.people, '$hadir Hadir', Colors.green),
                   const SizedBox(width: 8),
-                  _buildChip(
-                    Icons.check_circle,
-                    '${_data.where((d) => (d['jam_keluar'] ?? '00:00:00') != '00:00:00').length} Lengkap',
-                    Colors.blue,
-                  ),
+                  _chip(Icons.check_circle,
+                      '$lengkap Lengkap', Colors.blue),
                   const SizedBox(width: 8),
-                  _buildChip(
-                    Icons.pending,
-                    '${_data.where((d) => (d['jam_keluar'] ?? '00:00:00') == '00:00:00').length} Belum Keluar',
-                    Colors.orange,
-                  ),
+                  _chip(Icons.pending,
+                      '$belum Belum Keluar', Colors.orange),
                 ],
               ),
             ),
 
-          // Grid foto
+          const Divider(height: 1),
+
+          // Grid
           Expanded(
             child: _loading
                 ? const Center(child: CircularProgressIndicator())
@@ -223,18 +403,28 @@ class _GaleriScreenState extends State<GaleriScreen> {
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             Icon(Icons.people_outline,
-                                size: 64, color: Colors.grey[300]),
+                                size: 64,
+                                color: Colors.grey[300]),
                             const SizedBox(height: 12),
                             Text(
                               'Tidak ada kehadiran\npada tanggal ini',
                               textAlign: TextAlign.center,
-                              style: TextStyle(color: Colors.grey[500]),
+                              style:
+                                  TextStyle(color: Colors.grey[500]),
+                            ),
+                            const SizedBox(height: 12),
+                            OutlinedButton.icon(
+                              onPressed: () =>
+                                  _loadData(forceRefresh: true),
+                              icon: const Icon(Icons.refresh),
+                              label: const Text('Refresh'),
                             ),
                           ],
                         ),
                       )
                     : RefreshIndicator(
-                        onRefresh: _loadData,
+                        onRefresh: () =>
+                            _loadData(forceRefresh: true),
                         child: GridView.builder(
                           padding: const EdgeInsets.all(12),
                           gridDelegate:
@@ -244,9 +434,9 @@ class _GaleriScreenState extends State<GaleriScreen> {
                             mainAxisSpacing: 10,
                             childAspectRatio: 0.78,
                           ),
-                          itemCount: _sortedData.length,
-                          itemBuilder: (context, i) =>
-                              _buildCard(_sortedData[i]),
+                          itemCount: _sorted.length,
+                          itemBuilder: (_, i) =>
+                              _buildCard(_sorted[i]),
                         ),
                       ),
           ),
@@ -255,9 +445,10 @@ class _GaleriScreenState extends State<GaleriScreen> {
     );
   }
 
-  Widget _buildChip(IconData icon, String label, Color color) {
+  Widget _chip(IconData icon, String label, Color color) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      padding: const EdgeInsets.symmetric(
+          horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
         color: color.withOpacity(0.1),
         borderRadius: BorderRadius.circular(20),
@@ -278,8 +469,7 @@ class _GaleriScreenState extends State<GaleriScreen> {
   }
 
   Widget _buildCard(Map<String, dynamic> item) {
-    final namaFotoMasuk = item['foto_masuk'] ?? '';
-    final fotoUrl = _fotoUrl(namaFotoMasuk, 'masuk');
+    final fotoUrl    = _fotoUrl(item['foto_masuk'], 'masuk');
     final sudahKeluar =
         (item['jam_keluar'] ?? '00:00:00') != '00:00:00';
     final nama = item['nama'] ?? '-';
@@ -293,7 +483,6 @@ class _GaleriScreenState extends State<GaleriScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // Foto masuk
             Expanded(
               child: Stack(
                 fit: StackFit.expand,
@@ -303,20 +492,18 @@ class _GaleriScreenState extends State<GaleriScreen> {
                           fotoUrl,
                           fit: BoxFit.cover,
                           errorBuilder: (_, __, ___) =>
-                              _placeholderFoto(nama),
-                          loadingBuilder: (_, child, progress) =>
-                              progress == null
+                              _placeholder(nama),
+                          loadingBuilder: (_, child, prog) =>
+                              prog == null
                                   ? child
                                   : Container(
-                                      color: Colors.grey[200],
+                                      color: Colors.grey[100],
                                       child: const Center(
                                           child:
                                               CircularProgressIndicator(
-                                                  strokeWidth: 2)),
-                                    ),
+                                                  strokeWidth: 2))),
                         )
-                      : _placeholderFoto(nama),
-                  // Badge status
+                      : _placeholder(nama),
                   Positioned(
                     top: 8, right: 8,
                     child: Container(
@@ -340,19 +527,17 @@ class _GaleriScreenState extends State<GaleriScreen> {
                 ],
               ),
             ),
-            // Info bawah
             Padding(
               padding: const EdgeInsets.all(8),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    nama,
-                    style: const TextStyle(
-                        fontWeight: FontWeight.bold, fontSize: 12),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
+                  Text(nama,
+                      style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 12),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis),
                   const SizedBox(height: 2),
                   Row(
                     children: [
@@ -382,7 +567,7 @@ class _GaleriScreenState extends State<GaleriScreen> {
     );
   }
 
-  Widget _placeholderFoto(String nama) {
+  Widget _placeholder(String nama) {
     return Container(
       color: const Color(0xFF1B5E20).withOpacity(0.1),
       child: Center(
@@ -398,73 +583,138 @@ class _GaleriScreenState extends State<GaleriScreen> {
   }
 
   void _showDetail(Map<String, dynamic> item) {
-    final namaFotoMasuk  = item['foto_masuk'] ?? '';
-    final namaFotoKeluar = item['foto_keluar'] ?? '';
-    final fotoMasukUrl   = _fotoUrl(namaFotoMasuk, 'masuk');
-    final fotoKeluarUrl  = _fotoUrl(namaFotoKeluar, 'keluar');
-    final sudahKeluar    =
+    final fotoMasukUrl  = _fotoUrl(item['foto_masuk'], 'masuk');
+    final fotoKeluarUrl = _fotoUrl(item['foto_keluar'], 'keluar');
+    final sudahKeluar   =
         (item['jam_keluar'] ?? '00:00:00') != '00:00:00';
 
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
+      backgroundColor: Colors.transparent,
       builder: (_) => DraggableScrollableSheet(
         expand: false,
-        initialChildSize: 0.7,
+        initialChildSize: 0.75,
         maxChildSize: 0.95,
-        builder: (_, scroll) => SingleChildScrollView(
-          controller: scroll,
-          child: Padding(
-            padding: const EdgeInsets.all(20),
+        builder: (_, scroll) => Container(
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius:
+                BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          child: SingleChildScrollView(
+            controller: scroll,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // Handle
                 Center(
                   child: Container(
                     width: 40, height: 4,
+                    margin: const EdgeInsets.symmetric(vertical: 12),
                     decoration: BoxDecoration(
-                      color: Colors.grey[300],
-                      borderRadius: BorderRadius.circular(2),
-                    ),
+                        color: Colors.grey[300],
+                        borderRadius: BorderRadius.circular(2)),
                   ),
                 ),
-                const SizedBox(height: 16),
-                Text(item['nama'] ?? '-',
-                    style: const TextStyle(
-                        fontSize: 18, fontWeight: FontWeight.bold)),
-                Text(item['jabatan'] ?? '-',
-                    style: const TextStyle(color: Colors.grey)),
-                const Divider(height: 20),
-                Row(
-                  children: [
-                    Expanded(
-                      child: _buildDetailFoto(
-                        label: 'Foto Masuk',
-                        jam: item['jam_masuk'] ?? '-',
-                        fotoUrl: fotoMasukUrl,
-                        color: Colors.green,
-                        icon: Icons.login,
+
+                // Header info
+                Padding(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 20),
+                  child: Row(
+                    children: [
+                      CircleAvatar(
+                        radius: 24,
+                        backgroundColor: const Color(0xFF1B5E20),
+                        child: Text(
+                          (item['nama'] ?? '?')[0].toUpperCase(),
+                          style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 20,
+                              fontWeight: FontWeight.bold),
+                        ),
                       ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: _buildDetailFoto(
-                        label: 'Foto Keluar',
-                        jam: sudahKeluar
-                            ? item['jam_keluar']
-                            : '-',
-                        fotoUrl: sudahKeluar
-                            ? fotoKeluarUrl
-                            : '',
-                        color: Colors.blue,
-                        icon: Icons.logout,
+                      const SizedBox(width: 12),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(item['nama'] ?? '-',
+                              style: const TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold)),
+                          Text(item['jabatan'] ?? '-',
+                              style: const TextStyle(
+                                  color: Colors.grey)),
+                        ],
                       ),
-                    ),
-                  ],
+                      const Spacer(),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: sudahKeluar
+                              ? Colors.green.withOpacity(0.1)
+                              : Colors.orange.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(
+                              color: sudahKeluar
+                                  ? Colors.green
+                                  : Colors.orange),
+                        ),
+                        child: Text(
+                          sudahKeluar ? 'Lengkap' : 'Belum Keluar',
+                          style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                              color: sudahKeluar
+                                  ? Colors.green
+                                  : Colors.orange),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
+
+                const SizedBox(height: 16),
+                const Divider(height: 1),
+                const SizedBox(height: 16),
+
+                // Foto masuk & keluar
+                Padding(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: _fotoDetailCard(
+                          label: 'Foto Masuk',
+                          jam: item['jam_masuk'] ?? '-',
+                          url: fotoMasukUrl,
+                          color: Colors.green,
+                          icon: Icons.login,
+                          nama: item['nama'] ?? '?',
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: _fotoDetailCard(
+                          label: 'Foto Keluar',
+                          jam: sudahKeluar
+                              ? item['jam_keluar']
+                              : '-',
+                          url: sudahKeluar
+                              ? fotoKeluarUrl
+                              : '',
+                          color: Colors.blue,
+                          icon: Icons.logout,
+                          nama: item['nama'] ?? '?',
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 24),
               ],
             ),
           ),
@@ -473,12 +723,13 @@ class _GaleriScreenState extends State<GaleriScreen> {
     );
   }
 
-  Widget _buildDetailFoto({
+  Widget _fotoDetailCard({
     required String label,
     required String jam,
-    required String fotoUrl,
+    required String url,
     required Color color,
     required IconData icon,
+    required String nama,
   }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -489,33 +740,107 @@ class _GaleriScreenState extends State<GaleriScreen> {
             const SizedBox(width: 4),
             Text(label,
                 style: TextStyle(
-                    fontWeight: FontWeight.bold, color: color)),
+                    fontWeight: FontWeight.bold,
+                    color: color,
+                    fontSize: 13)),
           ],
         ),
         Text(jam,
             style: TextStyle(
-                fontSize: 18,
+                fontSize: 20,
                 fontWeight: FontWeight.bold,
                 color: color)),
         const SizedBox(height: 8),
-        ClipRRect(
-          borderRadius: BorderRadius.circular(12),
-          child: fotoUrl.isNotEmpty
-              ? Image.network(fotoUrl,
-                  fit: BoxFit.cover,
-                  width: double.infinity,
-                  height: 160,
-                  errorBuilder: (_, __, ___) =>
-                      _placeholderFoto('?'))
-              : Container(
-                  height: 160,
-                  color: Colors.grey[200],
-                  child: const Center(
-                      child: Icon(Icons.image_not_supported,
-                          color: Colors.grey)),
-                ),
+        // Foto — tap untuk fullscreen
+        GestureDetector(
+          onTap: url.isNotEmpty
+              ? () => _showFullscreen(url, label, nama)
+              : null,
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: url.isNotEmpty
+                ? Stack(
+                    children: [
+                      Image.network(
+                        url,
+                        fit: BoxFit.cover,
+                        width: double.infinity,
+                        height: 160,
+                        errorBuilder: (_, __, ___) =>
+                            SizedBox(
+                              height: 160,
+                              child: _placeholder(nama),
+                            ),
+                        loadingBuilder: (_, child, prog) =>
+                            prog == null
+                                ? child
+                                : SizedBox(
+                                    height: 160,
+                                    child: Container(
+                                      color: Colors.grey[100],
+                                      child: const Center(
+                                          child:
+                                              CircularProgressIndicator(
+                                                  strokeWidth: 2)),
+                                    ),
+                                  ),
+                      ),
+                      // Tap hint
+                      Positioned(
+                        bottom: 8, right: 8,
+                        child: Container(
+                          padding: const EdgeInsets.all(4),
+                          decoration: const BoxDecoration(
+                            color: Colors.black45,
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(Icons.zoom_in,
+                              color: Colors.white, size: 16),
+                        ),
+                      ),
+                    ],
+                  )
+                : Container(
+                    height: 160,
+                    decoration: BoxDecoration(
+                      color: Colors.grey[100],
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Center(
+                        child: Icon(Icons.image_not_supported,
+                            color: Colors.grey, size: 40)),
+                  ),
+          ),
         ),
       ],
+    );
+  }
+
+  void _showFullscreen(String url, String label, String nama) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => Scaffold(
+          backgroundColor: Colors.black,
+          appBar: AppBar(
+            backgroundColor: Colors.black,
+            foregroundColor: Colors.white,
+            title: Text('$label - $nama'),
+          ),
+          body: Center(
+            child: InteractiveViewer(
+              child: Image.network(
+                url,
+                fit: BoxFit.contain,
+                errorBuilder: (_, __, ___) => const Icon(
+                    Icons.broken_image,
+                    color: Colors.white,
+                    size: 64),
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
