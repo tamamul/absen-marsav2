@@ -393,36 +393,61 @@ class _AbsenScreenState extends State<AbsenScreen> {
   }
 
   Widget _buildKamera(Color color) {
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        CameraPreview(_cameraController!),
+  return Column(
+    children: [
+      // Area preview dengan aspect ratio yang benar
+      Expanded(
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            // Preview kamera dengan aspect ratio
+            if (_previewSize != null)
+              Center(
+                child: AspectRatio(
+                  aspectRatio: _previewSize!.width / _previewSize!.height,
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
+                    child: CameraPreview(_cameraController!),
+                  ),
+                ),
+              )
+            else
+              CameraPreview(_cameraController!),
 
-        // Progress kedip
-        Positioned(
-          top: 80, left: 20, right: 20,
-          child: _buildKedipProgress(color),
+            // Progress kedip
+            Positioned(
+              top: 80,
+              left: 20,
+              right: 20,
+              child: _buildKedipProgress(color),
+            ),
+
+            // Instruksi
+            Positioned(
+              top: 20,
+              left: 20,
+              right: 20,
+              child: _buildInstructionBubble(),
+            ),
+
+            // Countdown
+            if (_countdown > 0)
+              _buildCountdownCircle(color),
+
+            // Error
+            if (_pesan.isNotEmpty)
+              Positioned(
+                bottom: 20,
+                left: 20,
+                right: 20,
+                child: _buildErrorBubble(),
+              ),
+          ],
         ),
-
-        // Instruksi
-        Positioned(
-          top: 20, left: 20, right: 20,
-          child: _buildInstructionBubble(),
-        ),
-
-        // Countdown
-        if (_countdown > 0)
-          Center(child: _buildCountdownCircle(color)),
-
-        // Error
-        if (_pesan.isNotEmpty)
-          Positioned(
-            bottom: 20, left: 20, right: 20,
-            child: _buildErrorBubble(),
-          ),
-      ],
-    );
-  }
+      ),
+    ],
+  );
+}
 
   Widget _buildKedipProgress(Color color) {
     return Row(
