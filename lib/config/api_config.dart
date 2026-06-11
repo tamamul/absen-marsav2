@@ -15,5 +15,5 @@ class ApiConfig {
 
   static const String tokenKey     = 'api_token';
   static const String userKey      = 'user_data';
-}
 static const String galeri = '$baseUrl/api/absen/galeri';
+}
