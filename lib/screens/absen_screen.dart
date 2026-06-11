@@ -40,6 +40,9 @@ class _AbsenScreenState extends State<AbsenScreen> {
   Size? _previewSize;
   bool _isFrontCamera = false;
 
+  // Validasi wajah saat countdown
+  bool _wajahValid = false;
+
   @override
   void initState() {
     super.initState();
@@ -98,112 +101,135 @@ class _AbsenScreenState extends State<AbsenScreen> {
   }
 
   Future<void> _prosesFrame(CameraImage image) async {
-    if (_memproses || _livenessOk || !mounted) return;
+  if (_memproses || _livenessOk || !mounted) return;
 
-    final now = DateTime.now().millisecondsSinceEpoch;
-    if (now - _lastProcess < 250) return;
-    _lastProcess = now;
+  final now = DateTime.now().millisecondsSinceEpoch;
+  if (now - _lastProcess < 250) return;
+  _lastProcess = now;
 
-    _memproses = true;
+  _memproses = true;
 
-    try {
-      final inputImage = _convertCameraImage(image);
-      if (inputImage == null) {
-        _memproses = false;
-        return;
-      }
+  try {
+    final inputImage = _convertCameraImage(image);
+    if (inputImage == null) {
+      _memproses = false;
+      return;
+    }
 
-      final faces = await _faceDetector!.processImage(inputImage);
+    final faces = await _faceDetector!.processImage(inputImage);
 
-      if (!mounted) {
-        _memproses = false;
-        return;
-      }
+    if (!mounted) {
+      _memproses = false;
+      return;
+    }
 
-      if (faces.isEmpty) {
-        setState(() {
-          _wajahRect = null;
-          if (!_livenessOk) _instruksi = 'Posisikan wajah di kotak';
-          _kedipTerdeteksi = false;
-          _mataTerbuka = false;
-        });
-        _memproses = false;
-        return;
-      }
-
-      final face = faces.first;
-      final leftEye = face.leftEyeOpenProbability ?? 1.0;
-      final rightEye = face.rightEyeOpenProbability ?? 1.0;
-      final rataEye = (leftEye + rightEye) / 2;
-
-      // Simpan rect mentahan, nanti di-mapping di UI
+    if (faces.isEmpty) {
       setState(() {
-        _wajahRect = face.boundingBox;
+        _wajahRect = null;
+        _wajahValid = false; // ← RESET
+        if (!_livenessOk) _instruksi = 'Posisikan wajah di kotak';
+        _kedipTerdeteksi = false;
+        _mataTerbuka = false;
+        
+        // Jika sedang countdown tapi wajah hilang, batalkan
+        if (_countdown > 0) {
+          _batalkanCountdown();
+        }
       });
+      _memproses = false;
+      return;
+    }
 
-      // Logika kedip
-      if (!_kedipTerdeteksi) {
-        if (rataEye > 0.7 && !_mataTerbuka) {
-          setState(() {
-            _mataTerbuka = true;
-            _instruksi = 'Kedipkan mata Anda 👁️';
-          });
-        } else if (rataEye < 0.25 && _mataTerbuka) {
-          setState(() {
-            _kedipTerdeteksi = true;
-            _instruksi = 'Kedipan terdeteksi! ✅';
-          });
-        }
-      } else if (!_livenessOk) {
-        if (rataEye > 0.7) {
-          setState(() {
-            _livenessOk = true;
-            _instruksi = 'Jangan bergerak...';
-            _countdown = 2;
-          });
-          _mulaiCountdown();
-        }
+    final face = faces.first;
+    final leftEye = face.leftEyeOpenProbability ?? 1.0;
+    final rightEye = face.rightEyeOpenProbability ?? 1.0;
+    final rataEye = (leftEye + rightEye) / 2;
+
+    setState(() {
+      _wajahRect = face.boundingBox;
+      _wajahValid = true; // ← WAJAH VALID
+    });
+
+    // Logika kedip
+    if (!_kedipTerdeteksi) {
+      if (rataEye > 0.7 && !_mataTerbuka) {
+        setState(() {
+          _mataTerbuka = true;
+          _instruksi = 'Kedipkan mata Anda 👁️';
+        });
+      } else if (rataEye < 0.25 && _mataTerbuka) {
+        setState(() {
+          _kedipTerdeteksi = true;
+          _instruksi = 'Kedipan terdeteksi! ✅';
+        });
       }
-    } catch (_) {}
+    } else if (!_livenessOk) {
+      if (rataEye > 0.7) {
+        setState(() {
+          _livenessOk = true;
+          _instruksi = 'Jangan bergerak...';
+          _countdown = 2;
+          _wajahValid = true; // ← SET VALID
+        });
+        _mulaiCountdown();
+      }
+    }
+  } catch (_) {}
 
-    _memproses = false;
-  }
+  _memproses = false;
+}
 
   void _mulaiCountdown() {
-    _countdownTimer?.cancel();
-    _countdownTimer = Timer.periodic(const Duration(seconds: 1), (t) {
-      if (!mounted) {
-        t.cancel();
-        return;
-      }
-      setState(() {
-        if (_countdown > 0) {
-          _countdown--;
-          _instruksi = 'Jangan bergerak... $_countdown';
+  _countdownTimer?.cancel();
+  _countdownTimer = Timer.periodic(const Duration(seconds: 1), (t) {
+    if (!mounted) {
+      t.cancel();
+      return;
+    }
+    setState(() {
+      if (_countdown > 0) {
+        _countdown--;
+        _instruksi = 'Jangan bergerak... $_countdown';
+        
+        // Double check: jika wajah tidak valid, batalkan
+        if (!_wajahValid) {
+          t.cancel();
+          _batalkanCountdown();
         }
-      });
-      if (_countdown <= 0) {
-        t.cancel();
-        _ambilFotoOtomatis();
       }
     });
-  }
+    if (_countdown <= 0) {
+      t.cancel();
+      
+      // Validasi terakhir sebelum ambil foto
+      if (_wajahValid) {
+        _ambilFotoOtomatis();
+      } else {
+        _batalkanCountdown();
+      }
+    }
+  });
+}
 
   Future<void> _ambilFotoOtomatis() async {
-    if (_cameraController == null || !_cameraReady) return;
-    try {
-      await _cameraController!.stopImageStream();
-      await Future.delayed(const Duration(milliseconds: 300));
-      final file = await _cameraController!.takePicture();
-      setState(() {
-        _foto = File(file.path);
-        _instruksi = 'Foto berhasil diambil 📸';
-      });
-      _prosesTimer = Timer(const Duration(seconds: 1), _kirimAbsen);
-    } catch (e) {
-      setState(() => _pesan = 'Gagal ambil foto: $e');
-    }
+  if (_cameraController == null || !_cameraReady || !_wajahValid) {
+    _batalkanCountdown();
+    return;
   }
+  
+  try {
+    await _cameraController!.stopImageStream();
+    await Future.delayed(const Duration(milliseconds: 300));
+    final file = await _cameraController!.takePicture();
+    setState(() {
+      _foto = File(file.path);
+      _instruksi = 'Foto berhasil diambil 📸';
+    });
+    _prosesTimer = Timer(const Duration(seconds: 1), _kirimAbsen);
+  } catch (e) {
+    setState(() => _pesan = 'Gagal ambil foto: $e');
+  }
+}
 
   InputImage? _convertCameraImage(CameraImage image) {
     try {
@@ -231,21 +257,22 @@ class _AbsenScreenState extends State<AbsenScreen> {
   }
 
   void _ulangi() {
-    _countdownTimer?.cancel();
-    _prosesTimer?.cancel();
-    _lastProcess = 0;
-    setState(() {
-      _foto = null;
-      _pesan = '';
-      _instruksi = 'Posisikan wajah di kotak';
-      _livenessOk = false;
-      _mataTerbuka = false;
-      _kedipTerdeteksi = false;
-      _countdown = 0;
-      _wajahRect = null;
-    });
-    _cameraController?.startImageStream(_prosesFrame);
-  }
+  _countdownTimer?.cancel();
+  _prosesTimer?.cancel();
+  _lastProcess = 0;
+  setState(() {
+    _foto = null;
+    _pesan = '';
+    _instruksi = 'Posisikan wajah di kotak';
+    _livenessOk = false;
+    _mataTerbuka = false;
+    _kedipTerdeteksi = false;
+    _countdown = 0;
+    _wajahRect = null;
+    _wajahValid = false; // ← RESET
+  });
+  _cameraController?.startImageStream(_prosesFrame);
+}
 
   Future<void> _kirimAbsen() async {
     if (_foto == null) return;
@@ -281,6 +308,27 @@ class _AbsenScreenState extends State<AbsenScreen> {
       _ulangi();
     }
   }
+  
+  void _batalkanCountdown() {
+  _countdownTimer?.cancel();
+  setState(() {
+    _countdown = 0;
+    _livenessOk = false;
+    _kedipTerdeteksi = false;
+    _mataTerbuka = false;
+    _wajahValid = false;
+    _instruksi = 'Wajah tidak terdeteksi! Ulangi';
+  });
+  
+  // Tampilkan pesan
+  ScaffoldMessenger.of(context).showSnackBar(
+    const SnackBar(
+      content: Text('⚠️ Wajah tidak terdeteksi, silakan ulangi'),
+      backgroundColor: Colors.red,
+      duration: Duration(seconds: 2),
+    ),
+  );
+}
 
   @override
   Widget build(BuildContext context) {
@@ -356,7 +404,7 @@ class _AbsenScreenState extends State<AbsenScreen> {
   Widget _buildInstructionBubble(Color color) {
     IconData icon;
     Color iconColor;
-    
+
     if (_livenessOk) {
       icon = Icons.check_circle;
       iconColor = Colors.green;
@@ -463,7 +511,7 @@ class _AbsenScreenState extends State<AbsenScreen> {
         ),
       );
     }
-    
+
     if (_kedipTerdeteksi) {
       return Positioned(
         top: 80,
