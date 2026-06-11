@@ -7,6 +7,7 @@ import 'absen_screen.dart';
 import 'login_screen.dart';
 import 'riwayat_screen.dart';
 import 'profil_screen.dart';
+import 'galeri_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -221,8 +222,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ],
       ),
       body: _navIndex == 0
-          ? _buildBeranda()
-          : const RiwayatScreen(),
+    ? _buildBeranda()
+    : _navIndex == 1
+        ? const RiwayatScreen()
+        : const GaleriScreen(),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _navIndex,
         onDestinationSelected: (i) => setState(() => _navIndex = i),
@@ -233,6 +236,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
             icon: Icon(Icons.home_outlined),
             selectedIcon: Icon(Icons.home, color: Color(0xFF1B5E20)),
             label: 'Beranda',
+          ),
+          NavigationDestination(
+          icon: Icon(Icons.photo_library_outlined),
+          selectedIcon: Icon(Icons.photo_library, color: Color(0xFF1B5E20)),
+          label: 'Galeri',
           ),
           NavigationDestination(
             icon: Icon(Icons.history_outlined),
