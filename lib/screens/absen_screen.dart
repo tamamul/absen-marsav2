@@ -39,9 +39,8 @@ class _AbsenScreenState extends State<AbsenScreen> with WidgetsBindingObserver {
   List<double> _historyEulerY = [];
   Rect? _wajahRect;
 
-  // Capture
-  File? _fotoCadangan; // Foto diambil lebih awal
-  bool _sedangValidasiFoto = false;
+  // Capture & validasi
+  bool _sedangValidasi = false;  // <-- TAMBAHAN: agar tidak proses frame saat validasi
   int _countdown = 3;
   Timer? _timer;
 
@@ -70,7 +69,6 @@ class _AbsenScreenState extends State<AbsenScreen> with WidgetsBindingObserver {
     _timer?.cancel();
     _cameraController?.dispose();
     _faceDetector?.close();
-    _fotoCadangan?.delete();
     super.dispose();
   }
 
@@ -98,8 +96,9 @@ class _AbsenScreenState extends State<AbsenScreen> with WidgetsBindingObserver {
 
       _cameraController = CameraController(
         kamera,
-        ResolutionPreset.high,
+        ResolutionPreset.veryHigh,
         enableAudio: false,
+        imageFormatGroup: ImageFormatGroup.bgra8888,
       );
 
       await _cameraController!.initialize();
@@ -110,7 +109,6 @@ class _AbsenScreenState extends State<AbsenScreen> with WidgetsBindingObserver {
       _cameraController!.startImageStream(_prosesFrame);
     } catch (e) {
       try {
-        // Fallback
         final cameras = await availableCameras();
         final kamera = cameras.firstWhere(
           (c) => c.lensDirection == CameraLensDirection.front,
@@ -119,7 +117,7 @@ class _AbsenScreenState extends State<AbsenScreen> with WidgetsBindingObserver {
 
         _cameraController = CameraController(
           kamera,
-          ResolutionPreset.medium,
+          ResolutionPreset.high,
           enableAudio: false,
         );
 
@@ -134,7 +132,8 @@ class _AbsenScreenState extends State<AbsenScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _prosesFrame(CameraImage image) async {
-    if (_memproses || _sedangValidasiFoto || !_isReady) return;
+    // Jangan proses jika sedang validasi foto
+    if (_memproses || _sedangValidasi || !_isReady) return;
 
     final now = DateTime.now().millisecondsSinceEpoch;
     if (now - _lastProcess < 300) return;
@@ -196,7 +195,6 @@ class _AbsenScreenState extends State<AbsenScreen> with WidgetsBindingObserver {
 
       setState(() => _wajahRect = face.boundingBox);
 
-      // Stabilitas
       _historyEulerY.add(eulerY);
       if (_historyEulerY.length > 5) _historyEulerY.removeAt(0);
 
@@ -215,7 +213,6 @@ class _AbsenScreenState extends State<AbsenScreen> with WidgetsBindingObserver {
         }
       }
 
-      // Mata buka
       if (rataMata > 0.6) {
         _frameMataBuka++;
       } else {
@@ -233,7 +230,6 @@ class _AbsenScreenState extends State<AbsenScreen> with WidgetsBindingObserver {
         return;
       }
 
-      // Kedip
       if (!_livenessSelesai) {
         if (rataMata < 0.15 && !_sedangKedip) {
           _sedangKedip = true;
@@ -263,9 +259,7 @@ class _AbsenScreenState extends State<AbsenScreen> with WidgetsBindingObserver {
 
   void _mulaiCountdown() {
     _timer?.cancel();
-    _fotoCadangan?.delete();
-    _fotoCadangan = null;
-    _sedangValidasiFoto = false;
+    _sedangValidasi = false;
 
     _timer = Timer.periodic(const Duration(milliseconds: 500), (t) {
       if (!mounted || !_isReady) {
@@ -273,10 +267,9 @@ class _AbsenScreenState extends State<AbsenScreen> with WidgetsBindingObserver {
         return;
       }
 
-      // Cek wajah masih ada
-      if (_wajahRect == null || _frameStabil < _MIN_STABIL) {
+      if (_wajahRect == null) {
         t.cancel();
-        _resetLiveness('Wajah berubah! Ulangi');
+        _resetLiveness('Wajah hilang!');
         return;
       }
 
@@ -286,83 +279,79 @@ class _AbsenScreenState extends State<AbsenScreen> with WidgetsBindingObserver {
           _instruksi = 'Jangan bergerak... $_countdown';
         });
       } else if (_countdown == 1) {
-        // AMBIL FOTO SEKARANG (sebelum countdown 0)
         t.cancel();
         _instruksi = '📸 Memotret...';
-        _ambilDanValidasiFoto();
+        _ambilDanValidasi();
       }
     });
   }
 
-  Future<void> _ambilDanValidasiFoto() async {
-    if (_cameraController == null) {
-      _resetLiveness('Error kamera!');
+  // ────────────────────────── GABUNGAN AMBIL & VALIDASI ──────────────────────────
+  Future<void> _ambilDanValidasi() async {
+    if (_cameraController == null || _wajahRect == null) {
+      _resetLiveness('Wajah tidak terdeteksi!');
       return;
     }
 
-    _sedangValidasiFoto = true;
+    _sedangValidasi = true; // kunci agar stream tidak ganggu
+    File? fileFoto;
 
     try {
-      // Stop stream
       await _cameraController!.stopImageStream();
-
-      // Ambil foto
-      final file = await _cameraController!.takePicture();
-      _fotoCadangan = File(file.path);
-
-      if (!mounted) return;
-
-      // ⭐ VALIDASI: cek apakah foto mengandung wajah
-      final adaWajah = await _cekFotoAdaWajah(_fotoCadangan!);
-
-      if (!mounted) return;
-
-      if (adaWajah) {
-        // BERHASIL! Foto valid
-        setState(() {
-          _foto = _fotoCadangan;
-          _countdown = 0;
-          _instruksi = 'Foto valid! ✅';
-        });
-        _sedangValidasiFoto = false;
-        // Kirim ke server
-        Future.delayed(const Duration(milliseconds: 200), _kirimAbsen);
-      } else {
-        // GAGAL! Tidak ada wajah di foto
-        _fotoCadangan?.delete();
-        _fotoCadangan = null;
-        _sedangValidasiFoto = false;
-        _resetLiveness('⚠️ Tidak ada wajah di foto! Curang terdeteksi!');
-      }
+      await Future.delayed(const Duration(milliseconds: 200));
+      fileFoto = File((await _cameraController!.takePicture()).path);
     } catch (e) {
-      _fotoCadangan?.delete();
-      _fotoCadangan = null;
-      _sedangValidasiFoto = false;
-      _resetLiveness('Error! Ulangi');
+      _sedangValidasi = false;
+      _resetLiveness('Gagal mengambil foto');
+      return;
+    }
+
+    if (!mounted) {
+      _sedangValidasi = false;
+      return;
+    }
+
+    // ── CEK WAJAH PADA FOTO ──
+    final adaWajah = await _cekFotoAdaWajah(fileFoto);
+
+    if (!mounted) {
+      _sedangValidasi = false;
+      return;
+    }
+
+    if (adaWajah) {
+      // ✅ BERHASIL
+      setState(() {
+        _foto = fileFoto;
+        _countdown = 0;
+        _instruksi = 'Foto valid! ✅';
+        _sedangValidasi = false;
+      });
+      // Kirim ke server
+      Future.delayed(const Duration(milliseconds: 300), _kirimAbsen);
+    } else {
+      // ❌ TIDAK ADA WAJAH → tolak
+      fileFoto.delete(); // hapus file tidak terpakai
+      _sedangValidasi = false;
+      _resetLiveness('⚠️ Tidak ada wajah di foto! Curang terdeteksi!');
     }
   }
 
+  // Deteksi wajah dari file gambar
   Future<bool> _cekFotoAdaWajah(File foto) async {
     try {
-      // Baca file foto sebagai InputImage
       final inputImage = InputImage.fromFile(foto);
-      
-      // Deteksi wajah di foto
       final faces = await _faceDetector!.processImage(inputImage);
-      
-      // Return true jika ada wajah
       return faces.isNotEmpty;
-    } catch (e) {
+    } catch (_) {
       return false;
     }
   }
+  // ────────────────────────────────────────────────────────────────────────────────
 
   void _resetLiveness(String msg) {
     _timer?.cancel();
-    _fotoCadangan?.delete();
-    _fotoCadangan = null;
-    _sedangValidasiFoto = false;
-    
+    _sedangValidasi = false;
     setState(() {
       _countdown = 3;
       _livenessSelesai = false;
@@ -381,9 +370,7 @@ class _AbsenScreenState extends State<AbsenScreen> with WidgetsBindingObserver {
 
   void _ulangi() {
     _timer?.cancel();
-    _fotoCadangan?.delete();
-    _fotoCadangan = null;
-    _sedangValidasiFoto = false;
+    _sedangValidasi = false;
     _kedipDiminta = Random().nextInt(2) + 1;
 
     setState(() {
@@ -547,8 +534,8 @@ class _AbsenScreenState extends State<AbsenScreen> with WidgetsBindingObserver {
           ),
         ),
 
-        // Countdown atau loading validasi
-        if ((_livenessSelesai && _countdown > 0) || _sedangValidasiFoto)
+        // Countdown / loading validasi
+        if ((_livenessSelesai && _countdown > 0) || _sedangValidasi)
           Center(
             child: Container(
               width: 100,
@@ -558,7 +545,7 @@ class _AbsenScreenState extends State<AbsenScreen> with WidgetsBindingObserver {
                 shape: BoxShape.circle,
               ),
               child: Center(
-                child: _sedangValidasiFoto
+                child: _sedangValidasi
                     ? const CircularProgressIndicator(color: Colors.white)
                     : Text(
                         '$_countdown',
