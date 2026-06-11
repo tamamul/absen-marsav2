@@ -29,7 +29,7 @@ class _AbsenScreenState extends State<AbsenScreen> {
   String _pesan     = '';
 
   // Challenge
-  late String _challenge; // 'blink' atau 'smile'
+  late String _challenge;
   String _instruksi = '';
   String _fase      = 'init'; // init, siap, challenge, ok, foto, kirim
 
@@ -40,6 +40,9 @@ class _AbsenScreenState extends State<AbsenScreen> {
   int    _senyumFrames  = 0;
   int    _countdown     = 0;
   Timer? _timer;
+  
+  // Tambahan untuk exposure handling
+  bool _exposureAdjusted = false;
 
   @override
   void initState() {
@@ -48,7 +51,9 @@ class _AbsenScreenState extends State<AbsenScreen> {
     _detector  = FaceDetector(
       options: FaceDetectorOptions(
         enableClassification: true,
-        performanceMode: FaceDetectorMode.fast,
+        enableTracking: true,
+        performanceMode: FaceDetectorMode.accurate, // ganti ke accurate untuk deteksi lebih baik
+        minFaceSize: 0.15, // lebih kecil agar wajah jauh bisa terdeteksi
       ),
     );
     _initCam();
@@ -73,19 +78,50 @@ class _AbsenScreenState extends State<AbsenScreen> {
         (c) => c.lensDirection == CameraLensDirection.front,
         orElse: () => cams.first,
       );
-      // Pakai low resolution dan tanpa paksa format
+      
+      // Gunakan resolusi medium untuk kualitas cukup tanpa terlalu berat
       _cam = CameraController(
         cam,
-        ResolutionPreset.low,
+        ResolutionPreset.medium,
         enableAudio: false,
+        imageFormatGroup: ImageFormatGroup.nv21, // format yang didukung ML Kit
       );
+      
       await _cam!.initialize();
+      
       if (!mounted) return;
+      
+      // Set exposure untuk kondisi gelap
+      await _adjustExposure();
+      
       setState(() { _loading = false; _fase = 'siap'; });
       _setInstruksi();
       _cam!.startImageStream(_onFrame);
     } catch (e) {
       setState(() { _loading = false; _pesan = 'Error: $e'; });
+    }
+  }
+
+  Future<void> _adjustExposure() async {
+    if (_cam == null) return;
+    
+    try {
+      // Coba set exposure mode auto dulu
+      await _cam!.setExposureMode(ExposureMode.auto);
+      
+      // Set exposure compensation ke +2 untuk gambar lebih terang di kondisi gelap
+      final minExposure = await _cam!.getMinExposureOffset();
+      final maxExposure = await _cam!.getMaxExposureOffset();
+      final targetExposure = 2.0.clamp(minExposure, maxExposure);
+      
+      await _cam!.setExposureOffset(targetExposure);
+      
+      if (mounted) {
+        _exposureAdjusted = true;
+      }
+    } catch (e) {
+      // Fallback jika exposure adjustment tidak didukung
+      debugPrint('Exposure adjustment failed: $e');
     }
   }
 
@@ -108,7 +144,7 @@ class _AbsenScreenState extends State<AbsenScreen> {
     if (_fase == 'init' || _fase == 'foto' || _fase == 'kirim') return;
 
     final now = DateTime.now().millisecondsSinceEpoch;
-    if (now - _lastMs < 300) return;
+    if (now - _lastMs < 200) return; // kurangi delay untuk deteksi lebih responsif
     _lastMs = now;
     _memproses = true;
 
@@ -120,13 +156,16 @@ class _AbsenScreenState extends State<AbsenScreen> {
       if (!mounted) { _memproses = false; return; }
 
       if (faces.isEmpty) {
+        // Jangan langsung reset state, beri toleransi
         setState(() {
-          _frameMata     = 0;
-          _mataStabil    = false;
-          _kedipMulai    = false;
-          _senyumFrames  = 0;
-          if (_fase == 'challenge') {
-            _fase      = 'siap';
+          _instruksi = 'Wajah tidak terdeteksi, coba sesuaikan posisi';
+          if (_fase == 'challenge' && _senyumFrames > 0) {
+            // Tahan state senyum sebentar
+            _senyumFrames = _senyumFrames > 0 ? _senyumFrames - 1 : 0;
+          } else if (_fase == 'challenge') {
+            _fase = 'siap';
+            _mataStabil = false;
+            _kedipMulai = false;
             _setInstruksi();
           }
         });
@@ -137,22 +176,25 @@ class _AbsenScreenState extends State<AbsenScreen> {
       final face     = faces.first;
       final eulerY   = face.headEulerAngleY ?? 0.0;
       final eulerX   = face.headEulerAngleX ?? 0.0;
-      final mata     = ((face.leftEyeOpenProbability  ?? 1.0) +
-                        (face.rightEyeOpenProbability ?? 1.0)) / 2;
+      
+      // Gunakan nilai default lebih rendah untuk toleransi
+      final leftEyeOpen  = face.leftEyeOpenProbability  ?? 0.8;
+      final rightEyeOpen = face.rightEyeOpenProbability ?? 0.8;
+      final mata     = (leftEyeOpen + rightEyeOpen) / 2;
       final senyum   = face.smilingProbability ?? 0.0;
 
-      // Kepala harus menghadap depan
-      if (eulerY.abs() > 25 || eulerX.abs() > 20) {
+      // Kepala harus menghadap depan - lebih longgar
+      if (eulerY.abs() > 35 || eulerX.abs() > 30) {
         setState(() => _instruksi = 'Hadapkan wajah ke depan');
         _memproses = false;
         return;
       }
 
       if (_fase == 'siap') {
-        // Mata harus terbuka stabil dulu
-        if (mata > 0.7) {
+        // Mata harus terbuka stabil - threshold lebih rendah
+        if (mata > 0.5) {
           _frameMata++;
-          if (_frameMata >= 4) {
+          if (_frameMata >= 3) { // kurangi frame yang dibutuhkan
             setState(() {
               _mataStabil = true;
               _fase       = 'challenge';
@@ -160,35 +202,40 @@ class _AbsenScreenState extends State<AbsenScreen> {
             });
           }
         } else {
-          _frameMata = 0;
+          _frameMata = max(0, _frameMata - 1); // gradual decrease
         }
       } else if (_fase == 'challenge') {
         if (_challenge == 'blink') {
-          // Deteksi kedip: mata terbuka → tertutup → terbuka
-          if (!_kedipMulai && mata > 0.7) {
+          // Deteksi kedip dengan threshold lebih longgar
+          if (!_kedipMulai && mata > 0.6) {
             _kedipMulai = true;
-          } else if (_kedipMulai && mata < 0.2) {
+          } else if (_kedipMulai && mata < 0.3) {
             // Mata tertutup
             setState(() => _instruksi = '👁️ Buka mata...');
-          } else if (_kedipMulai && mata > 0.7 &&
+          } else if (_kedipMulai && mata > 0.5 &&
               _instruksi == '👁️ Buka mata...') {
             // Kedip selesai!
             _lulus();
           }
         } else {
-          // Deteksi senyum: harus senyum stabil 3 frame
-          if (senyum > 0.8) {
+          // Deteksi senyum dengan threshold lebih rendah
+          if (senyum > 0.6) {
             _senyumFrames++;
             setState(() => _instruksi =
                 '😊 Tahan senyum... ${_senyumFrames}/3');
             if (_senyumFrames >= 3) _lulus();
           } else {
-            _senyumFrames = 0;
-            setState(() => _instruksi = '😊 Tersenyum lebar');
+            // Gradual decrease biar gak langsung reset
+            _senyumFrames = max(0, _senyumFrames - 1);
+            if (_senyumFrames == 0) {
+              setState(() => _instruksi = '😊 Tersenyum lebar');
+            }
           }
         }
       }
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('Detection error: $e');
+    }
 
     _memproses = false;
   }
@@ -215,9 +262,18 @@ class _AbsenScreenState extends State<AbsenScreen> {
     setState(() { _fase = 'foto'; _setInstruksi(); });
     try {
       await _cam!.stopImageStream();
-      await Future.delayed(const Duration(milliseconds: 400));
+      
+      // Reset exposure ke auto sebelum foto untuk hasil optimal
+      try {
+        await _cam!.setExposureMode(ExposureMode.auto);
+        await _cam!.setExposureOffset(0.0);
+      } catch (_) {}
+      
+      await Future.delayed(const Duration(milliseconds: 600)); // tambah delay untuk exposure adjustment
+      
       final file = await _cam!.takePicture();
       if (!mounted) return;
+      
       setState(() => _foto = File(file.path));
       await Future.delayed(const Duration(milliseconds: 500));
       _kirimAbsen();
@@ -233,23 +289,32 @@ class _AbsenScreenState extends State<AbsenScreen> {
     final lat = widget.posisi?.latitude  ?? 0.0;
     final lng = widget.posisi?.longitude ?? 0.0;
 
-    final res = widget.tipe == 'masuk'
-        ? await ApiService.absenMasuk(lat, lng, fotoFile: _foto)
-        : await ApiService.absenKeluar(lat, lng, fotoFile: _foto);
+    try {
+      final res = widget.tipe == 'masuk'
+          ? await ApiService.absenMasuk(lat, lng, fotoFile: _foto)
+          : await ApiService.absenKeluar(lat, lng, fotoFile: _foto);
 
-    setState(() => _mengirim = false);
-
-    if (res['status'] == true) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(res['message'] ?? 'Absen berhasil'),
-        backgroundColor: Colors.green,
-      ));
-      Navigator.pop(context, true);
-    } else {
+      setState(() => _mengirim = false);
+
+      if (res['status'] == true) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(res['message'] ?? 'Absen berhasil'),
+          backgroundColor: Colors.green,
+        ));
+        Navigator.pop(context, true);
+      } else {
+        setState(() {
+          _pesan = res['messages']?['error'] ??
+              res['message'] ?? 'Absen gagal';
+        });
+        _ulangi();
+      }
+    } catch (e) {
+      if (!mounted) return;
       setState(() {
-        _pesan = res['messages']?['error'] ??
-            res['message'] ?? 'Absen gagal';
+        _mengirim = false;
+        _pesan = 'Error: $e';
       });
       _ulangi();
     }
@@ -258,6 +323,7 @@ class _AbsenScreenState extends State<AbsenScreen> {
   void _ulangi() {
     _timer?.cancel();
     _challenge = Random().nextBool() ? 'blink' : 'smile';
+    _exposureAdjusted = false;
     setState(() {
       _foto         = null;
       _pesan        = '';
@@ -269,6 +335,9 @@ class _AbsenScreenState extends State<AbsenScreen> {
       _countdown    = 0;
       _setInstruksi();
     });
+    
+    // Re-adjust exposure
+    _adjustExposure();
     _cam?.startImageStream(_onFrame);
   }
 
@@ -308,7 +377,8 @@ class _AbsenScreenState extends State<AbsenScreen> {
           ),
         );
       }
-    } catch (_) {
+    } catch (e) {
+      debugPrint('Conversion error: $e');
       return null;
     }
   }
