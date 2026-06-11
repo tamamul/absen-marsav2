@@ -17,6 +17,10 @@ dependencies:
   # Storage
   shared_preferences: ^2.2.2
   
+  # Local cache & storage
+  sqflite: ^2.3.3
+  path: ^1.9.0
+
   # GPS
   geolocator: ^11.0.0
   
