@@ -32,28 +32,27 @@ class _AbsenScreenState extends State<AbsenScreen> with WidgetsBindingObserver {
   int _kedipCount = 0;
   bool _sedangKedip = false;
   bool _livenessSelesai = false;
-  
+
   // Anti-cheat
   int _frameStabil = 0;
   int _frameMataBuka = 0;
   List<double> _historyEulerY = [];
   Rect? _wajahRect;
-  Size? _previewSize;
-  
+
   // Capture
   bool _sudahCapture = false;
   int _countdown = 3;
   Timer? _timer;
 
-  static const int _MIN_STABIL = 10; // ~2 detik stabil
-  static const int _MIN_MATA = 8; // ~1.6 detik mata buka
+  static const int _MIN_STABIL = 8;
+  static const int _MIN_MATA = 6;
   static const double _MAX_EULER = 20.0;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _kedipDiminta = Random().nextInt(2) + 1; // 1 atau 2 kedip
+    _kedipDiminta = Random().nextInt(2) + 1;
     _faceDetector = FaceDetector(
       options: FaceDetectorOptions(
         enableClassification: true,
@@ -97,20 +96,41 @@ class _AbsenScreenState extends State<AbsenScreen> with WidgetsBindingObserver {
 
       _cameraController = CameraController(
         kamera,
-        ResolutionPreset.high,
+        ResolutionPreset.veryHigh, // ⭐ PAKAI VERY HIGH
         enableAudio: false,
-        imageFormatGroup: ImageFormatGroup.nv21,
+        imageFormatGroup: ImageFormatGroup.bgra8888, // ⭐ FORMAT BGRA
       );
 
       await _cameraController!.initialize();
-      _previewSize = _cameraController!.value.previewSize;
-
+      
+      // ⭐ JANGAN UBAH EXPOSURE, BIARKAN DEFAULT
+      
       if (!mounted) return;
       setState(() => _isReady = true);
-      
+
       _cameraController!.startImageStream(_prosesFrame);
     } catch (e) {
-      setState(() => _pesan = 'Gagal: $e');
+      // Fallback kalau veryHigh tidak support
+      try {
+        final cameras = await availableCameras();
+        final kamera = cameras.firstWhere(
+          (c) => c.lensDirection == CameraLensDirection.front,
+          orElse: () => cameras.first,
+        );
+        
+        _cameraController = CameraController(
+          kamera,
+          ResolutionPreset.high,
+          enableAudio: false,
+        );
+        
+        await _cameraController!.initialize();
+        if (!mounted) return;
+        setState(() => _isReady = true);
+        _cameraController!.startImageStream(_prosesFrame);
+      } catch (e2) {
+        setState(() => _pesan = 'Gagal: $e2');
+      }
     }
   }
 
@@ -118,7 +138,7 @@ class _AbsenScreenState extends State<AbsenScreen> with WidgetsBindingObserver {
     if (_memproses || _sudahCapture || !_isReady) return;
 
     final now = DateTime.now().millisecondsSinceEpoch;
-    if (now - _lastProcess < 250) return;
+    if (now - _lastProcess < 300) return;
     _lastProcess = now;
 
     _memproses = true;
@@ -136,14 +156,13 @@ class _AbsenScreenState extends State<AbsenScreen> with WidgetsBindingObserver {
         return;
       }
 
-      // ── WAJAH HILANG ──
       if (faces.isEmpty) {
         setState(() {
           _wajahRect = null;
           _frameStabil = 0;
           _frameMataBuka = 0;
           _historyEulerY.clear();
-          
+
           if (_countdown < 3) {
             _resetLiveness('Wajah tidak terdeteksi!');
           } else {
@@ -161,14 +180,14 @@ class _AbsenScreenState extends State<AbsenScreen> with WidgetsBindingObserver {
       final eulerY = face.headEulerAngleY ?? 0;
       final eulerX = face.headEulerAngleX ?? 0;
 
-      // ── CEK SUDUT KEPALA ──
+      // Cek sudut kepala
       if (eulerY.abs() > _MAX_EULER || eulerX.abs() > _MAX_EULER) {
         setState(() {
           _wajahRect = face.boundingBox;
           _frameStabil = 0;
           _frameMataBuka = 0;
           _instruksi = 'Hadapkan wajah lurus ke kamera';
-          
+
           if (_countdown < 3) {
             _resetLiveness('Posisi kepala miring!');
           }
@@ -177,17 +196,16 @@ class _AbsenScreenState extends State<AbsenScreen> with WidgetsBindingObserver {
         return;
       }
 
-      // ── UPDATE WAJAH ──
       setState(() => _wajahRect = face.boundingBox);
 
-      // ── CEK STABILITAS ──
+      // Cek stabilitas
       _historyEulerY.add(eulerY);
       if (_historyEulerY.length > 5) _historyEulerY.removeAt(0);
-      
+
       if (_historyEulerY.length >= 3) {
-        final variasi = _historyEulerY.reduce((a, b) => (a - b).abs() > a ? a : b) -
-                        _historyEulerY.reduce((a, b) => (a - b).abs() < a ? a : b);
-        if (variasi.abs() < 3.0) {
+        final maxY = _historyEulerY.reduce(max);
+        final minY = _historyEulerY.reduce(min);
+        if ((maxY - minY).abs() < 3.0) {
           _frameStabil++;
         } else {
           _frameStabil = 0;
@@ -199,8 +217,8 @@ class _AbsenScreenState extends State<AbsenScreen> with WidgetsBindingObserver {
         }
       }
 
-      // ── CEK MATA BUKA ──
-      if (rataMata > 0.7) {
+      // Cek mata buka
+      if (rataMata > 0.6) {
         _frameMataBuka++;
       } else {
         _frameMataBuka = 0;
@@ -209,7 +227,6 @@ class _AbsenScreenState extends State<AbsenScreen> with WidgetsBindingObserver {
       final mataBukaStabil = _frameMataBuka >= _MIN_MATA;
       final wajahStabil = _frameStabil >= _MIN_STABIL;
 
-      // ── BELUM STABIL ──
       if (!wajahStabil || !mataBukaStabil) {
         if (!_livenessSelesai) {
           setState(() => _instruksi = 'Tahan posisi, buka mata lebar');
@@ -218,19 +235,16 @@ class _AbsenScreenState extends State<AbsenScreen> with WidgetsBindingObserver {
         return;
       }
 
-      // ── DETEKSI KEDIP ──
+      // Deteksi kedip
       if (!_livenessSelesai) {
         if (rataMata < 0.15 && !_sedangKedip) {
-          // Mata mulai terpejam
           _sedangKedip = true;
           setState(() => _instruksi = 'Kedip terdeteksi...');
-        } else if (rataMata > 0.7 && _sedangKedip) {
-          // Mata terbuka lagi = 1 kedip selesai
+        } else if (rataMata > 0.6 && _sedangKedip) {
           _sedangKedip = false;
           _kedipCount++;
-          
+
           if (_kedipCount >= _kedipDiminta) {
-            // Liveness berhasil!
             setState(() {
               _livenessSelesai = true;
               _countdown = 3;
@@ -239,7 +253,7 @@ class _AbsenScreenState extends State<AbsenScreen> with WidgetsBindingObserver {
             _mulaiCountdown();
           } else {
             setState(() {
-              _instruksi = 'Kedip ${_kedipCount}/${_kedipDiminta}, tunggu...';
+              _instruksi = 'Kedip ${_kedipCount}/${_kedipDiminta}';
             });
           }
         }
@@ -252,17 +266,16 @@ class _AbsenScreenState extends State<AbsenScreen> with WidgetsBindingObserver {
   void _mulaiCountdown() {
     _timer?.cancel();
     _sudahCapture = false;
-    
+
     _timer = Timer.periodic(const Duration(milliseconds: 500), (t) {
       if (!mounted || !_isReady) {
         t.cancel();
         return;
       }
 
-      // CEK WAJAH MASIH ADA?
-      if (_wajahRect == null || _frameStabil < _MIN_STABIL) {
+      if (_wajahRect == null) {
         t.cancel();
-        _resetLiveness('Wajah berubah! Ulangi');
+        _resetLiveness('Wajah hilang!');
         return;
       }
 
@@ -272,7 +285,6 @@ class _AbsenScreenState extends State<AbsenScreen> with WidgetsBindingObserver {
           _instruksi = 'Jangan bergerak... $_countdown';
         });
       } else if (_countdown == 1 && !_sudahCapture) {
-        // CAPTURE SEKARANG
         _sudahCapture = true;
         _instruksi = '📸';
         t.cancel();
@@ -290,21 +302,19 @@ class _AbsenScreenState extends State<AbsenScreen> with WidgetsBindingObserver {
     try {
       await _cameraController!.stopImageStream();
       await Future.delayed(const Duration(milliseconds: 150));
-      
+
       final file = await _cameraController!.takePicture();
-      
+
       if (!mounted) return;
-      
+
       setState(() {
         _foto = File(file.path);
         _countdown = 0;
         _instruksi = 'Foto berhasil! ✅';
       });
-      
-      // Langsung kirim
+
       Future.delayed(const Duration(milliseconds: 200), _kirimAbsen);
     } catch (e) {
-      setState(() => _pesan = 'Gagal ambil foto');
       _resetLiveness('Error! Ulangi');
     }
   }
@@ -322,8 +332,7 @@ class _AbsenScreenState extends State<AbsenScreen> with WidgetsBindingObserver {
       _historyEulerY.clear();
       _instruksi = '⚠️ $msg';
     });
-    
-    // Restart stream
+
     if (_foto == null && _cameraController != null) {
       _cameraController!.startImageStream(_prosesFrame);
     }
@@ -333,7 +342,7 @@ class _AbsenScreenState extends State<AbsenScreen> with WidgetsBindingObserver {
     _timer?.cancel();
     _sudahCapture = false;
     _kedipDiminta = Random().nextInt(2) + 1;
-    
+
     setState(() {
       _foto = null;
       _pesan = '';
@@ -347,13 +356,13 @@ class _AbsenScreenState extends State<AbsenScreen> with WidgetsBindingObserver {
       _wajahRect = null;
       _instruksi = 'Arahkan wajah ke kamera';
     });
-    
+
     _cameraController?.startImageStream(_prosesFrame);
   }
 
   Future<void> _kirimAbsen() async {
     if (_foto == null) return;
-    
+
     setState(() => _mengirim = true);
 
     final lat = widget.posisi?.latitude ?? 0.0;
@@ -389,9 +398,10 @@ class _AbsenScreenState extends State<AbsenScreen> with WidgetsBindingObserver {
       final rotation = InputImageRotationValue.fromRawValue(
               camera.sensorOrientation) ??
           InputImageRotation.rotation0deg;
+
       final format = InputImageFormatValue.fromRawValue(image.format.raw);
       if (format == null) return null;
-      
+
       final plane = image.planes.first;
       return InputImage.fromBytes(
         bytes: plane.bytes,
@@ -416,11 +426,13 @@ class _AbsenScreenState extends State<AbsenScreen> with WidgetsBindingObserver {
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(
-        backgroundColor: color,
+        backgroundColor: Colors.transparent,
         foregroundColor: Colors.white,
         title: Text(label),
         centerTitle: true,
+        elevation: 0,
       ),
+      extendBodyBehindAppBar: true,
       body: !_isReady
           ? const Center(child: CircularProgressIndicator(color: Colors.white))
           : _foto != null
@@ -433,13 +445,13 @@ class _AbsenScreenState extends State<AbsenScreen> with WidgetsBindingObserver {
     return Stack(
       fit: StackFit.expand,
       children: [
-        // KAMERA FULL SCREEN
+        // ⭐ KAMERA FULL SCREEN NATURAL
         CameraPreview(_cameraController!),
 
-        // OVERLAY INDIKATOR KEDIP
+        // Indikator kedip
         if (!_livenessSelesai)
           Positioned(
-            top: 80,
+            top: 100,
             left: 0,
             right: 0,
             child: Row(
@@ -447,37 +459,37 @@ class _AbsenScreenState extends State<AbsenScreen> with WidgetsBindingObserver {
               children: List.generate(_kedipDiminta, (i) {
                 final done = i < _kedipCount;
                 return Container(
-                  margin: const EdgeInsets.symmetric(horizontal: 6),
-                  width: 40,
-                  height: 40,
+                  margin: const EdgeInsets.symmetric(horizontal: 8),
+                  width: 44,
+                  height: 44,
                   decoration: BoxDecoration(
-                    color: done ? Colors.green : Colors.black45,
+                    color: done ? Colors.green : Colors.black38,
                     shape: BoxShape.circle,
                     border: Border.all(
-                      color: done ? Colors.green : Colors.white70,
-                      width: 2,
+                      color: done ? Colors.green : Colors.white54,
+                      width: 2.5,
                     ),
                   ),
                   child: Icon(
                     Icons.remove_red_eye,
                     color: done ? Colors.white : Colors.white70,
-                    size: 20,
+                    size: 22,
                   ),
                 );
               }),
             ),
           ),
 
-        // INSTRUKSI
+        // Instruksi
         Positioned(
-          top: 24,
+          top: 50,
           left: 20,
           right: 20,
           child: Center(
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
               decoration: BoxDecoration(
-                color: Colors.black54,
+                color: Colors.black45,
                 borderRadius: BorderRadius.circular(25),
               ),
               child: Text(
@@ -493,7 +505,7 @@ class _AbsenScreenState extends State<AbsenScreen> with WidgetsBindingObserver {
           ),
         ),
 
-        // COUNTDOWN
+        // Countdown
         if (_livenessSelesai && _countdown > 0)
           Center(
             child: Container(
@@ -516,7 +528,7 @@ class _AbsenScreenState extends State<AbsenScreen> with WidgetsBindingObserver {
             ),
           ),
 
-        // PESAN ERROR
+        // Error
         if (_pesan.isNotEmpty)
           Positioned(
             bottom: 30,
@@ -544,7 +556,6 @@ class _AbsenScreenState extends State<AbsenScreen> with WidgetsBindingObserver {
       fit: StackFit.expand,
       children: [
         Image.file(_foto!, fit: BoxFit.cover),
-        
         if (_mengirim)
           Container(
             color: Colors.black54,
@@ -554,15 +565,12 @@ class _AbsenScreenState extends State<AbsenScreen> with WidgetsBindingObserver {
                 children: [
                   CircularProgressIndicator(color: Colors.white),
                   SizedBox(height: 16),
-                  Text(
-                    'Mengirim...',
-                    style: TextStyle(color: Colors.white, fontSize: 16),
-                  ),
+                  Text('Mengirim...',
+                      style: TextStyle(color: Colors.white, fontSize: 16)),
                 ],
               ),
             ),
           ),
-        
         if (!_mengirim)
           Positioned(
             bottom: 40,
@@ -577,8 +585,7 @@ class _AbsenScreenState extends State<AbsenScreen> with WidgetsBindingObserver {
                 foregroundColor: Colors.black,
                 padding: const EdgeInsets.symmetric(vertical: 14),
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
+                    borderRadius: BorderRadius.circular(12)),
               ),
             ),
           ),
