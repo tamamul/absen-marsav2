@@ -168,14 +168,14 @@ static Future<Map<String, dynamic>> getGaleriHadir({
 
   // RIWAYAT ABSEN
   static Future<Map<String, dynamic>> getRiwayat() async {
-    try {
-      final res = await _dio.get(
-        ApiConfig.absenRiwayat,
-        options: Options(headers: await _authHeader()),
-      );
-      return res.data;
-    } on DioException catch (e) {
-      return e.response?.data ?? {'status': false, 'message': 'Koneksi gagal'};
-    }
+  try {
+    final res = await _dio.get(
+      '${ApiConfig.absenRiwayat}?limit=365',
+      options: Options(headers: await _authHeader()),
+    );
+    return res.data;
+  } on DioException catch (e) {
+    return e.response?.data ?? {'status': false, 'message': 'Koneksi gagal'};
   }
+}
 }
