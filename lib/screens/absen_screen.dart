@@ -253,7 +253,7 @@ class _AbsenScreenState extends State<AbsenScreen> with WidgetsBindingObserver {
             _mulaiCountdown();
           } else {
             setState(() {
-              _instruksi = 'Kedip ${_kedipCount}/${_kedipDiminta}';
+              _instruksi = 'Kedip $_kedipCount/$_kedipDiminta';
             });
           }
         }
@@ -445,8 +445,22 @@ class _AbsenScreenState extends State<AbsenScreen> with WidgetsBindingObserver {
     return Stack(
       fit: StackFit.expand,
       children: [
-        // ⭐ KAMERA FULL SCREEN NATURAL
-        CameraPreview(_cameraController!),
+        // ⭐ KAMERA DENGAN ASPECT RATIO YANG TEPAT & TERANG
+        if (_cameraController != null)
+          ClipRRect(
+            child: Transform.scale(
+              scale: 1 / (_cameraController!.value.aspectRatio * MediaQuery.of(context).size.aspectRatio),
+              alignment: Alignment.center,
+              child: CameraPreview(_cameraController!),
+            ),
+          )
+        else
+          Container(color: Colors.black),
+
+        // Overlay gelap untuk kontras teks (opsional, kurangi opacity jika masih gelap)
+        Container(
+          color: Colors.black.withOpacity(0.15),
+        ),
 
         // Indikator kedip
         if (!_livenessSelesai)
@@ -489,8 +503,9 @@ class _AbsenScreenState extends State<AbsenScreen> with WidgetsBindingObserver {
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
               decoration: BoxDecoration(
-                color: Colors.black45,
+                color: Colors.black54,
                 borderRadius: BorderRadius.circular(25),
+                border: Border.all(color: Colors.white24, width: 1),
               ),
               child: Text(
                 _instruksi,
@@ -514,6 +529,13 @@ class _AbsenScreenState extends State<AbsenScreen> with WidgetsBindingObserver {
               decoration: BoxDecoration(
                 color: color.withOpacity(0.8),
                 shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: color.withOpacity(0.5),
+                    blurRadius: 30,
+                    spreadRadius: 10,
+                  ),
+                ],
               ),
               child: Center(
                 child: Text(
@@ -539,6 +561,12 @@ class _AbsenScreenState extends State<AbsenScreen> with WidgetsBindingObserver {
               decoration: BoxDecoration(
                 color: Colors.red.shade800,
                 borderRadius: BorderRadius.circular(12),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.red.withOpacity(0.3),
+                    blurRadius: 10,
+                  ),
+                ],
               ),
               child: Text(
                 _pesan,
@@ -555,7 +583,17 @@ class _AbsenScreenState extends State<AbsenScreen> with WidgetsBindingObserver {
     return Stack(
       fit: StackFit.expand,
       children: [
-        Image.file(_foto!, fit: BoxFit.cover),
+        // ⭐ GAMBAR DENGAN ASPECT RATIO YANG PROPORSIONAL
+        if (_foto != null)
+          Center(
+            child: Image.file(
+              _foto!,
+              fit: BoxFit.contain,
+              width: double.infinity,
+              height: double.infinity,
+            ),
+          ),
+
         if (_mengirim)
           Container(
             color: Colors.black54,
