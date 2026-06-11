@@ -16,3 +16,16 @@ class ApiConfig {
   static const String tokenKey     = 'api_token';
   static const String userKey      = 'user_data';
 }
+static Future<Map<String, dynamic>> getGaleriHadir({
+  required String tanggal,
+}) async {
+  try {
+    final res = await _dio.get(
+      '${ApiConfig.galeri}?tanggal=$tanggal',
+      options: Options(headers: await _authHeader()),
+    );
+    return res.data;
+  } on DioException catch (e) {
+    return e.response?.data ?? {'status': false, 'message': 'Koneksi gagal'};
+  }
+}
