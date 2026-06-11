@@ -3,12 +3,7 @@ import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart' as p;
 import '../services/api_service.dart';
 
-class GaleriScreen extends StatefulWidget {
-  const GaleriScreen({super.key});
 
-  @override
-  State<GaleriScreen> createState() => _GaleriScreenState();
-}
 
 // ── Cache helper ──────────────────────────────────────────────
 class _GaleriCache {
