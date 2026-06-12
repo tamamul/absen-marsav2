@@ -3,7 +3,6 @@ import 'package:camera/camera.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
 import 'dart:io';
-import 'dart:async';
 import '../services/api_service.dart';
 
 class AbsenScreen extends StatefulWidget {
@@ -15,40 +14,24 @@ class AbsenScreen extends StatefulWidget {
   State<AbsenScreen> createState() => _AbsenScreenState();
 }
 
-class _AbsenScreenState extends State<AbsenScreen>
-    with WidgetsBindingObserver {
+class _AbsenScreenState extends State<AbsenScreen> {
   CameraController? _cam;
   FaceDetector?     _detector;
 
-  bool   _isReady   = false;
+  bool   _loading   = true;
+  bool   _ambil     = false; // sedang proses takePicture
+  bool   _validasi  = false; // sedang validasi wajah
   bool   _mengirim  = false;
-  bool   _validasi  = false;
-  bool   _memproses = false;
-  int    _lastMs    = 0;
   File?  _foto;
   String _pesan     = '';
-  String _instruksi = 'Arahkan wajah ke kamera';
-
-  // Liveness — threshold longgar
-  bool _mataSiap    = false; // mata terbuka minimal beberapa frame
-  bool _kedipMulai  = false; // mata mulai menutup
-  bool _kedipOk     = false; // kedip selesai
-  int  _frameMata   = 0;
-
-  // Threshold longgar
-  static const double _mataButaThr  = 0.25; // mata dianggap tertutup
-  static const double _mataBukaThr  = 0.55; // mata dianggap terbuka
-  static const int    _minFrameMata = 3;    // minimal frame mata buka
+  String _instruksi = 'Posisikan wajah di dalam oval';
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addObserver(this);
     _detector = FaceDetector(
       options: FaceDetectorOptions(
-        enableClassification: true,
-        enableTracking: true,
-        performanceMode: FaceDetectorMode.fast,
+        performanceMode: FaceDetectorMode.accurate,
       ),
     );
     _initCam();
@@ -56,177 +39,84 @@ class _AbsenScreenState extends State<AbsenScreen>
 
   @override
   void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
     _cam?.dispose();
     _detector?.close();
     super.dispose();
   }
 
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.inactive) {
-      _cam?.dispose();
-    } else if (state == AppLifecycleState.resumed) {
-      _initCam();
-    }
-  }
-
   Future<void> _initCam() async {
+    setState(() => _loading = true);
     try {
       final cams = await availableCameras();
       if (cams.isEmpty) {
-        setState(() => _pesan = 'Kamera tidak tersedia');
+        setState(() { _loading = false; _pesan = 'Kamera tidak tersedia'; });
         return;
       }
       final cam = cams.firstWhere(
         (c) => c.lensDirection == CameraLensDirection.front,
         orElse: () => cams.first,
       );
-
-      // Coba veryHigh + bgra8888 dulu
-      try {
-        _cam = CameraController(
-          cam, ResolutionPreset.veryHigh,
-          enableAudio: false,
-          imageFormatGroup: ImageFormatGroup.bgra8888,
-        );
-        await _cam!.initialize();
-      } catch (_) {
-        // Fallback ke high tanpa paksa format
-        _cam = CameraController(
-          cam, ResolutionPreset.high,
-          enableAudio: false,
-        );
-        await _cam!.initialize();
-      }
-
+      _cam = CameraController(
+        cam,
+        ResolutionPreset.high,
+        enableAudio: false,
+      );
+      await _cam!.initialize();
       if (!mounted) return;
-      setState(() => _isReady = true);
-      _cam!.startImageStream(_onFrame);
+      setState(() => _loading = false);
     } catch (e) {
-      setState(() => _pesan = 'Error kamera: $e');
+      setState(() { _loading = false; _pesan = 'Error kamera: $e'; });
     }
-  }
-
-  Future<void> _onFrame(CameraImage img) async {
-    if (_memproses || _kedipOk || _foto != null || !mounted) return;
-    final now = DateTime.now().millisecondsSinceEpoch;
-    if (now - _lastMs < 300) return;
-    _lastMs    = now;
-    _memproses = true;
-
-    try {
-      final input = _toInput(img);
-      if (input == null) { _memproses = false; return; }
-
-      final faces = await _detector!.processImage(input);
-      if (!mounted) { _memproses = false; return; }
-
-      if (faces.isEmpty) {
-        setState(() {
-          _instruksi = 'Arahkan wajah ke kamera';
-          _mataSiap  = false;
-          _kedipMulai = false;
-          _frameMata  = 0;
-        });
-        _memproses = false;
-        return;
-      }
-
-      final face   = faces.first;
-      final eulerY = face.headEulerAngleY ?? 0.0;
-      final eulerX = face.headEulerAngleX ?? 0.0;
-      final mata   = ((face.leftEyeOpenProbability  ?? 1.0) +
-                      (face.rightEyeOpenProbability ?? 1.0)) / 2;
-
-      // Kepala tidak boleh terlalu miring — threshold longgar
-      if (eulerY.abs() > 35 || eulerX.abs() > 30) {
-        setState(() => _instruksi = 'Hadapkan wajah ke depan');
-        _memproses = false;
-        return;
-      }
-
-      // Step 1: tunggu mata terbuka stabil
-      if (!_mataSiap) {
-        if (mata > _mataBukaThr) {
-          _frameMata++;
-          setState(() => _instruksi = 'Wajah terdeteksi 👤');
-          if (_frameMata >= _minFrameMata) {
-            setState(() {
-              _mataSiap  = true;
-              _instruksi = '👁️ Kedipkan mata';
-            });
-          }
-        } else {
-          _frameMata = 0;
-        }
-        _memproses = false;
-        return;
-      }
-
-      // Step 2: deteksi kedip
-      if (!_kedipMulai && mata < _mataButaThr) {
-        // Mata mulai menutup
-        setState(() {
-          _kedipMulai = true;
-          _instruksi  = '👁️ Buka mata...';
-        });
-      } else if (_kedipMulai && mata > _mataBukaThr) {
-        // Mata terbuka lagi → kedip selesai!
-        setState(() {
-          _kedipOk   = true;
-          _instruksi = '✅ Mengambil foto...';
-        });
-        _ambilFoto();
-      }
-    } catch (_) {}
-
-    _memproses = false;
   }
 
   Future<void> _ambilFoto() async {
+    if (_cam == null || _ambil) return;
+    setState(() {
+      _ambil    = true;
+      _instruksi = 'Mengambil foto...';
+      _pesan    = '';
+    });
+
     try {
-      await _cam!.stopImageStream();
-      await Future.delayed(const Duration(milliseconds: 300));
       final file = await _cam!.takePicture();
-      if (!mounted) return;
+      final foto = File(file.path);
 
       setState(() {
-        _foto     = File(file.path);
+        _foto    = foto;
+        _ambil   = false;
         _validasi = true;
+        _instruksi = 'Memvalidasi wajah...';
       });
 
-      await _validasiFoto(File(file.path));
-    } catch (e) {
-      setState(() => _pesan = 'Gagal foto: $e');
-      _ulangi();
-    }
-  }
-
-  Future<void> _validasiFoto(File file) async {
-    try {
-      final input = InputImage.fromFile(file);
+      // Deteksi wajah dari file foto
+      final input = InputImage.fromFile(foto);
       final faces = await _detector!.processImage(input);
+
       if (!mounted) return;
 
       if (faces.isEmpty) {
         setState(() {
-          _pesan    = 'Wajah tidak terdeteksi di foto. Coba lagi.';
-          _validasi = false;
+          _validasi  = false;
+          _foto      = null;
+          _pesan     = 'Wajah tidak terdeteksi.\nPastikan wajah terlihat jelas.';
+          _instruksi = 'Posisikan wajah di dalam oval';
         });
-        await Future.delayed(const Duration(seconds: 2));
-        _ulangi();
       } else {
         setState(() {
           _validasi  = false;
-          _instruksi = '✅ Wajah valid, mengirim...';
+          _instruksi = '✅ Wajah terdeteksi, mengirim...';
         });
         await Future.delayed(const Duration(milliseconds: 300));
         _kirimAbsen();
       }
     } catch (e) {
-      setState(() { _pesan = 'Validasi gagal: $e'; _validasi = false; });
-      _ulangi();
+      setState(() {
+        _ambil    = false;
+        _validasi = false;
+        _foto     = null;
+        _pesan    = 'Gagal: $e';
+        _instruksi = 'Posisikan wajah di dalam oval';
+      });
     }
   }
 
@@ -252,49 +142,23 @@ class _AbsenScreenState extends State<AbsenScreen>
       Navigator.pop(context, true);
     } else {
       setState(() {
-        _pesan = res['messages']?['error'] ??
+        _foto      = null;
+        _instruksi = 'Posisikan wajah di dalam oval';
+        _pesan     = res['messages']?['error'] ??
             res['message'] ?? 'Absen gagal';
       });
-      _ulangi();
     }
   }
 
   void _ulangi() {
     setState(() {
-      _foto       = null;
-      _pesan      = '';
-      _mataSiap   = false;
-      _kedipMulai = false;
-      _kedipOk    = false;
-      _validasi   = false;
-      _frameMata  = 0;
-      _instruksi  = 'Arahkan wajah ke kamera';
+      _foto      = null;
+      _pesan     = '';
+      _ambil     = false;
+      _validasi  = false;
+      _mengirim  = false;
+      _instruksi = 'Posisikan wajah di dalam oval';
     });
-    _cam?.startImageStream(_onFrame);
-  }
-
-  InputImage? _toInput(CameraImage img) {
-    try {
-      final cam      = _cam!.description;
-      final rotation = InputImageRotationValue.fromRawValue(
-              cam.sensorOrientation) ??
-          InputImageRotation.rotation0deg;
-      final format = InputImageFormatValue.fromRawValue(img.format.raw);
-      if (format == null) return null;
-      // Gunakan plane pertama saja (works untuk bgra8888 & nv21)
-      final plane = img.planes.first;
-      return InputImage.fromBytes(
-        bytes: plane.bytes,
-        metadata: InputImageMetadata(
-          size: Size(img.width.toDouble(), img.height.toDouble()),
-          rotation: rotation,
-          format: format,
-          bytesPerRow: plane.bytesPerRow,
-        ),
-      );
-    } catch (_) {
-      return null;
-    }
   }
 
   @override
@@ -313,7 +177,7 @@ class _AbsenScreenState extends State<AbsenScreen>
         elevation: 0,
       ),
       extendBodyBehindAppBar: true,
-      body: !_isReady
+      body: _loading
           ? const Center(
               child: CircularProgressIndicator(color: Colors.white))
           : _foto != null
@@ -323,17 +187,19 @@ class _AbsenScreenState extends State<AbsenScreen>
   }
 
   Widget _buildKamera(Color color) {
+    final bool sibuk = _ambil || _validasi;
+
     return Stack(
       fit: StackFit.expand,
       children: [
         // Preview fullscreen
-        CameraPreview(_cam!),
+        if (_cam != null) CameraPreview(_cam!),
 
         // Gradient atas
         Positioned(
           top: 0, left: 0, right: 0,
           child: Container(
-            height: 160,
+            height: 180,
             decoration: const BoxDecoration(
               gradient: LinearGradient(
                 begin: Alignment.topCenter,
@@ -348,7 +214,7 @@ class _AbsenScreenState extends State<AbsenScreen>
         Positioned(
           bottom: 0, left: 0, right: 0,
           child: Container(
-            height: 180,
+            height: 220,
             decoration: const BoxDecoration(
               gradient: LinearGradient(
                 begin: Alignment.bottomCenter,
@@ -359,27 +225,23 @@ class _AbsenScreenState extends State<AbsenScreen>
           ),
         ),
 
-        // Oval panduan
+        // Oval panduan wajah
         Center(
           child: Container(
-            width: 230, height: 290,
+            width: 240, height: 300,
             decoration: BoxDecoration(
               border: Border.all(
-                color: _kedipOk
-                    ? Colors.green
-                    : _mataSiap
-                        ? color
-                        : Colors.white54,
+                color: sibuk ? Colors.orange : color,
                 width: 3,
               ),
-              borderRadius: BorderRadius.circular(130),
+              borderRadius: BorderRadius.circular(140),
             ),
           ),
         ),
 
         // Instruksi atas
         Positioned(
-          top: 55, left: 20, right: 20,
+          top: 60, left: 20, right: 20,
           child: Center(
             child: Container(
               padding: const EdgeInsets.symmetric(
@@ -391,97 +253,83 @@ class _AbsenScreenState extends State<AbsenScreen>
               child: Text(
                 _instruksi,
                 textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: _kedipOk ? Colors.green : Colors.white,
-                  fontSize: 15,
-                  fontWeight: FontWeight.w600,
-                ),
+                style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500),
               ),
             ),
           ),
-        ),
-
-        // Step indicator bawah
-        Positioned(
-          bottom: 40, left: 0, right: 0,
-          child: _buildSteps(color),
         ),
 
         // Error
         if (_pesan.isNotEmpty)
           Positioned(
-            bottom: 110, left: 20, right: 20,
+            top: 130, left: 20, right: 20,
             child: Container(
-              padding: const EdgeInsets.all(10),
+              padding: const EdgeInsets.symmetric(
+                  horizontal: 16, vertical: 10),
               decoration: BoxDecoration(
-                color: Colors.red[900],
-                borderRadius: BorderRadius.circular(10),
+                color: Colors.red[900]!.withOpacity(0.9),
+                borderRadius: BorderRadius.circular(12),
               ),
-              child: Text(_pesan,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                      color: Colors.white, fontSize: 13)),
+              child: Text(
+                _pesan,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                    color: Colors.white, fontSize: 13),
+              ),
             ),
           ),
-      ],
-    );
-  }
 
-  Widget _buildSteps(Color color) {
-    final steps = [
-      {'label': 'Wajah', 'icon': Icons.face,
-       'done': _mataSiap || _kedipOk},
-      {'label': 'Kedip', 'icon': Icons.remove_red_eye,
-       'done': _kedipOk},
-      {'label': 'Foto',  'icon': Icons.camera_alt,
-       'done': false},
-    ];
-
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: List.generate(steps.length * 2 - 1, (i) {
-        if (i.isOdd) {
-          return Container(
-            width: 36, height: 2,
-            color: (steps[i ~/ 2]['done'] as bool)
-                ? color : Colors.white24,
-          );
-        }
-        final s    = steps[i ~/ 2];
-        final done = s['done'] as bool;
-        final idx  = i ~/ 2;
-        final curr = !done && (
-          idx == 0 ? !_mataSiap :
-          idx == 1 ? _mataSiap && !_kedipOk :
-          _kedipOk
-        );
-        return Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 44, height: 44,
-              decoration: BoxDecoration(
-                color: done ? color : curr
-                    ? color.withOpacity(0.25) : Colors.white12,
-                shape: BoxShape.circle,
-                border: Border.all(
-                    color: done || curr ? color : Colors.white24,
-                    width: 2),
+        // Tombol foto bawah
+        Positioned(
+          bottom: 50, left: 0, right: 0,
+          child: Center(
+            child: GestureDetector(
+              onTap: sibuk ? null : _ambilFoto,
+              child: Container(
+                width: 80, height: 80,
+                decoration: BoxDecoration(
+                  color: sibuk
+                      ? Colors.grey
+                      : color,
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                      color: Colors.white, width: 4),
+                  boxShadow: [
+                    BoxShadow(
+                      color: color.withOpacity(0.5),
+                      blurRadius: 15,
+                      spreadRadius: 3,
+                    ),
+                  ],
+                ),
+                child: sibuk
+                    ? const Padding(
+                        padding: EdgeInsets.all(20),
+                        child: CircularProgressIndicator(
+                            color: Colors.white, strokeWidth: 3),
+                      )
+                    : const Icon(Icons.camera_alt,
+                        color: Colors.white, size: 36),
               ),
-              child: Icon(s['icon'] as IconData,
-                color: done ? Colors.white : curr
-                    ? Colors.white70 : Colors.white30,
-                size: 22),
             ),
-            const SizedBox(height: 4),
-            Text(s['label'] as String,
-                style: TextStyle(
-                    fontSize: 11,
-                    color: done || curr
-                        ? Colors.white : Colors.white38)),
-          ],
-        );
-      }),
+          ),
+        ),
+
+        // Label tombol
+        Positioned(
+          bottom: 20, left: 0, right: 0,
+          child: Center(
+            child: Text(
+              sibuk ? 'Memproses...' : 'Tap untuk foto',
+              style: const TextStyle(
+                  color: Colors.white70, fontSize: 12),
+            ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -514,23 +362,23 @@ class _AbsenScreenState extends State<AbsenScreen>
         if (!_validasi && !_mengirim) ...[
           if (_pesan.isNotEmpty)
             Positioned(
-              bottom: 110, left: 20, right: 20,
+              bottom: 120, left: 20, right: 20,
               child: Container(
-                padding: const EdgeInsets.all(10),
+                padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
                     color: Colors.red[900],
-                    borderRadius: BorderRadius.circular(10)),
+                    borderRadius: BorderRadius.circular(12)),
                 child: Text(_pesan,
                     textAlign: TextAlign.center,
                     style: const TextStyle(color: Colors.white)),
               ),
             ),
           Positioned(
-            bottom: 30, left: 20, right: 20,
+            bottom: 40, left: 20, right: 20,
             child: ElevatedButton.icon(
               onPressed: _ulangi,
               icon: const Icon(Icons.refresh),
-              label: const Text('Ulangi'),
+              label: const Text('Ulangi Foto'),
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.white,
                 foregroundColor: Colors.black87,
