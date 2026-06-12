@@ -286,7 +286,16 @@ class _AbsenScreenState extends State<AbsenScreen> {
       _ulangi();
       return;
     }
+    
+    if (!_faceVisible) {
+  setState(() {
+    _pesan = 'Wajah tidak terdeteksi';
+  });
 
+  _ulangi();
+  return;
+}
+    
     await _cam!.stopImageStream();
 
     try {
@@ -451,46 +460,24 @@ class _AbsenScreenState extends State<AbsenScreen> {
           child: Stack(
             alignment: Alignment.center,
             children: [
-              // Lingkaran border luar
-              Container(
-                width: screenWidth * 0.85,
-                height: screenWidth * 0.85,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  border: Border.all(
-                    color: _fase == 'ok'
-                        ? Colors.green
-                        : _fase == 'challenge'
-                            ? color
-                            : Colors.white54,
-                    width: 3,
-                  ),
-                ),
-              ),
+              
               // Lingkaran dalam berisi preview
               Container(
-                width: screenWidth * 0.75,
-                height: screenWidth * 0.75,
-                decoration: const BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: Colors.black, // fallback
-                ),
-                child: ClipOval(
-                  child: _cam != null && _cam!.value.isInitialized
-                      ? FittedBox(
-                          fit: BoxFit.cover,
-                          child: SizedBox(
-                            width: _cam!.value.previewSize?.height ?? 1,
-                            height: _cam!.value.previewSize?.width ?? 1,
-                            child: CameraPreview(_cam!),
-                          ),
-                        )
-                      : const Center(
-                          child: CircularProgressIndicator(
-                            color: Colors.white,
-                          ),
-                        ),
-                ),
+  width: screenWidth * 0.9,
+  height: screenWidth * 1.2,
+  decoration: BoxDecoration(
+    borderRadius: BorderRadius.circular(20),
+    color: Colors.black,
+  ),
+  clipBehavior: Clip.hardEdge,
+  child: _cam != null && _cam!.value.isInitialized
+      ? CameraPreview(_cam!)
+      : const Center(
+          child: CircularProgressIndicator(
+            color: Colors.white,
+          ),
+        ),
+),
               ),
 
               // Countdown di tengah preview
