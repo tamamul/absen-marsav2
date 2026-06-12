@@ -478,7 +478,7 @@ class _AbsenScreenState extends State<AbsenScreen> {
           ),
         ),
 ),
-              ),
+              
 
               // Countdown di tengah preview
               if (_fase == 'ok' && _countdown > 0)
