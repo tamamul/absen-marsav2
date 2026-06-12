@@ -43,7 +43,11 @@ class _AbsenScreenState extends State<AbsenScreen> {
 
   // Exposure adjustment flag
   bool _exposureAdjusted = false;
-
+  
+  bool _faceVisible = false;
+  int _lastFaceDetected = 0;
+  bool _captureArmed = false;
+  
   @override
   void initState() {
     super.initState();
@@ -144,6 +148,24 @@ class _AbsenScreenState extends State<AbsenScreen> {
       if (inputImage == null) { _memproses = false; return; }
 
       final faces = await _detector!.processImage(inputImage);
+      if (faces.isNotEmpty) {
+  _faceVisible = true;
+  _lastFaceDetected = DateTime.now().millisecondsSinceEpoch;
+} else {
+  _faceVisible = false;
+
+  if (_captureArmed && _fase == 'ok') {
+    _captureArmed = false;
+
+    setState(() {
+      _pesan = 'Wajah hilang sebelum foto diambil';
+    });
+
+    _ulangi();
+    _memproses = false;
+    return;
+  }
+}
       if (!mounted) { _memproses = false; return; }
 
       if (faces.isEmpty) {
@@ -220,13 +242,22 @@ class _AbsenScreenState extends State<AbsenScreen> {
 
     _memproses = false;
   }
+  
+  bool _isFaceStillPresent() {
+  final now = DateTime.now().millisecondsSinceEpoch;
+
+  return _faceVisible &&
+      (now - _lastFaceDetected) < 500;
+}
 
   void _lulus() {
-    setState(() {
-      _fase      = 'ok';
-      _countdown = 2;
-      _setInstruksi();
-    });
+  _captureArmed = true;
+
+  setState(() {
+    _fase = 'ok';
+    _countdown = 2;
+    _setInstruksi();
+  });
     _timer?.cancel();
     _timer = Timer.periodic(const Duration(seconds: 1), (t) {
       if (!mounted) { t.cancel(); return; }
@@ -239,17 +270,33 @@ class _AbsenScreenState extends State<AbsenScreen> {
   }
 
   Future<void> _ambilFoto() async {
-    if (_cam == null) return;
-    setState(() { _fase = 'foto'; _setInstruksi(); });
+  if (_cam == null) return;
+
+  setState(() {
+    _fase = 'foto';
+    _setInstruksi();
+  });
+
+  try {
+    if (!_isFaceStillPresent()) {
+      setState(() {
+        _pesan = 'Wajah tidak terdeteksi. Silakan ulangi.';
+      });
+
+      _ulangi();
+      return;
+    }
+
+    await _cam!.stopImageStream();
+
     try {
-      await _cam!.stopImageStream();
-      // Reset exposure ke auto untuk foto terbaik
-      try {
-        await _cam!.setExposureMode(ExposureMode.auto);
-        await _cam!.setExposureOffset(0.0);
-      } catch (_) {}
-      await Future.delayed(const Duration(milliseconds: 600));
-      final file = await _cam!.takePicture();
+      await _cam!.setExposureMode(ExposureMode.auto);
+      await _cam!.setExposureOffset(0.0);
+    } catch (_) {}
+
+    await Future.delayed(const Duration(milliseconds: 600));
+
+    final file = await _cam!.takePicture();
       if (!mounted) return;
       setState(() => _foto = File(file.path));
       await Future.delayed(const Duration(milliseconds: 500));
