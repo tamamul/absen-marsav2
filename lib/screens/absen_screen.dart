@@ -41,7 +41,7 @@ class _AbsenScreenState extends State<AbsenScreen> {
   int    _countdown     = 0;
   Timer? _timer;
 
-  bool _exposureAdjusted = false;
+  
   bool _faceVisible = false;
   int _lastFaceDetected = 0;
   bool _captureArmed = false;
@@ -82,19 +82,17 @@ class _AbsenScreenState extends State<AbsenScreen> {
       );
 
       _cam = CameraController(
-        cam,
-        ResolutionPreset.medium,
-        enableAudio: false,
-        imageFormatGroup: Platform.isAndroid
-            ? ImageFormatGroup.nv21
-            : ImageFormatGroup.bgra8888,
-      );
+  cam,
+  ResolutionPreset.medium,
+  enableAudio: false,
+);
       await _cam!.initialize();
       if (!mounted) return;
 
-      await _adjustExposure();
-
-      setState(() { _loading = false; _fase = 'siap'; });
+setState(() {
+  _loading = false;
+  _fase = 'siap';
+});
       _setInstruksi();
       _cam!.startImageStream(_onFrame);
     } catch (e) {
@@ -102,19 +100,7 @@ class _AbsenScreenState extends State<AbsenScreen> {
     }
   }
 
-  Future<void> _adjustExposure() async {
-    if (_cam == null) return;
-    try {
-      await _cam!.setExposureMode(ExposureMode.auto);
-      final min = await _cam!.getMinExposureOffset();
-      final max = await _cam!.getMaxExposureOffset();
-      final target = 2.0.clamp(min, max);
-      await _cam!.setExposureOffset(target);
-      if (mounted) _exposureAdjusted = true;
-    } catch (e) {
-      debugPrint('Exposure adjustment failed: $e');
-    }
-  }
+  
 
   void _setInstruksi() {
     switch (_fase) {
@@ -296,13 +282,10 @@ class _AbsenScreenState extends State<AbsenScreen> {
 
       await _cam!.stopImageStream();
 
-      try {
-        await _cam!.setExposureMode(ExposureMode.auto);
-        await _cam!.setExposureOffset(0.0);
-      } catch (_) {}
-
-      await Future.delayed(const Duration(milliseconds: 600));
-
+      await Future.delayed(
+  const Duration(milliseconds: 600),
+);
+      
       final file = await _cam!.takePicture();
       if (!mounted) return;
 
@@ -369,23 +352,24 @@ class _AbsenScreenState extends State<AbsenScreen> {
   }
 
   void _ulangi() {
-    _timer?.cancel();
-    _challenge = Random().nextBool() ? 'blink' : 'smile';
-    _exposureAdjusted = false;
-    setState(() {
-      _foto         = null;
-      _pesan        = '';
-      _fase         = 'siap';
-      _frameMata    = 0;
-      _mataStabil   = false;
-      _kedipMulai   = false;
-      _senyumFrames = 0;
-      _countdown    = 0;
-      _setInstruksi();
-    });
-    _adjustExposure();
-    _cam?.startImageStream(_onFrame);
-  }
+  _timer?.cancel();
+  _challenge = Random().nextBool() ? 'blink' : 'smile';
+
+  setState(() {
+    _foto = null;
+    _pesan = '';
+    _fase = 'siap';
+    _frameMata = 0;
+    _mataStabil = false;
+    _kedipMulai = false;
+    _senyumFrames = 0;
+    _countdown = 0;
+    _captureArmed = false;
+    _setInstruksi();
+  });
+
+  _cam?.startImageStream(_onFrame);
+}
 
   InputImage? _toInputImage(CameraImage img) {
     try {
