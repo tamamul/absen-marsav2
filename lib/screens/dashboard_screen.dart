@@ -616,8 +616,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 const SizedBox(height: 8),
                 Row(
                   children: [
-                    const const Icon(Icons.event,
-                        color: Colors.white70, size: 14),
+                    const Icon(
+  Icons.event,
+  color: Colors.white70,
+  size: 14,
+),
                     const SizedBox(width: 6),
                     Expanded(
                       child: Text(
