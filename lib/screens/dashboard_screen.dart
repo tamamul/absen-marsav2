@@ -240,17 +240,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 ),
                 // Placeholder tools berikutnya
                 _toolItem(
-                  icon: Icons.calculate_outlined,
-                  label: 'Kalkulator',
-                  color: Colors.blue[700]!,
-                  onTap: () {
-                    Navigator.pop(context);
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                          content: Text('Segera hadir')),
-                    );
-                  },
-                ),
+  icon: Icons.how_to_reg,
+  label: 'Absensi\nSiswa',
+  color: Colors.teal,
+  onTap: () {
+    Navigator.pop(context);
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+          builder: (_) => const AbsensiSiswaScreen()),
+    );
+  },
+),
                 _toolItem(
                   icon: Icons.qr_code_scanner,
                   label: 'QR Scan',
