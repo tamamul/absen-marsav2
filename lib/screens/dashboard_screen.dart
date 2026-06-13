@@ -13,6 +13,7 @@ import 'riwayat_screen.dart';
 import 'galeri_screen.dart';
 import 'profil_screen.dart';
 import 'kalender_screen.dart';
+import 'absensi_siswa_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
