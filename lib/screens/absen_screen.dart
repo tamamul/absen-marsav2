@@ -475,19 +475,22 @@ class _AbsenScreenState extends State<AbsenScreen> {
                     color: color.withOpacity(0.85),
                     shape: BoxShape.circle,
                   ),
-                  child: Center(
-                    child: Text(
-                      '$_countdown',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 48,
-                        boxShadow: [
-                          BoxShadow(color: Colors.black26, blurRadius: 4)
-                        ],
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
+                child: Center(
+  child: Text(
+    '$_countdown',
+    style: const TextStyle(
+      color: Colors.white,
+      fontSize: 48,
+      fontWeight: FontWeight.bold,
+      shadows: [
+        Shadow(
+          color: Colors.black26,
+          blurRadius: 4,
+        ),
+      ],
+    ),
+  ),
+),
                 ),
             ],
           ),
