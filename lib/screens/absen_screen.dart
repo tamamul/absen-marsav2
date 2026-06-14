@@ -31,7 +31,7 @@ class _AbsenScreenState extends State<AbsenScreen> {
   // Challenge
   late String _challenge;
   String _instruksi = '';
-  String _fase      = 'init';
+  String _fase      = 'init'; // init, siap, challenge, ok, foto, kirim
 
   // State mata/senyum
   bool   _mataStabil    = false;
@@ -41,11 +41,13 @@ class _AbsenScreenState extends State<AbsenScreen> {
   int    _countdown     = 0;
   Timer? _timer;
 
+  // Exposure adjustment flag
+  bool _exposureAdjusted = false;
   
   bool _faceVisible = false;
   int _lastFaceDetected = 0;
   bool _captureArmed = false;
-
+  
   @override
   void initState() {
     super.initState();
@@ -81,18 +83,22 @@ class _AbsenScreenState extends State<AbsenScreen> {
         orElse: () => cams.first,
       );
 
+      // Resolusi medium + format paksa NV21 (Android) untuk kompatibilitas
       _cam = CameraController(
-  cam,
-  ResolutionPreset.medium,
-  enableAudio: false,
-);
+        cam,
+        ResolutionPreset.medium,
+        enableAudio: false,
+        imageFormatGroup: Platform.isAndroid
+            ? ImageFormatGroup.nv21
+            : ImageFormatGroup.bgra8888,
+      );
       await _cam!.initialize();
       if (!mounted) return;
 
-setState(() {
-  _loading = false;
-  _fase = 'siap';
-});
+      // Atur exposure otomatis bawaan sistem
+      await _adjustExposure();
+
+      setState(() { _loading = false; _fase = 'siap'; });
       _setInstruksi();
       _cam!.startImageStream(_onFrame);
     } catch (e) {
@@ -100,26 +106,29 @@ setState(() {
     }
   }
 
-  
+  // PERBAIKAN: Mode Auto Exposure Murni tanpa mengunci nilai offset offset
+  Future<void> _adjustExposure() async {
+    if (_cam == null) return;
+    try {
+      await _cam!.setExposureMode(ExposureMode.auto);
+      await _cam!.setExposureOffset(0.0); // Reset ke netral agar sensor membaca cahaya secara dinamis
+      if (mounted) _exposureAdjusted = true;
+    } catch (e) {
+      debugPrint('Exposure adjustment failed: $e');
+    }
+  }
 
   void _setInstruksi() {
-    switch (_fase) {
-      case 'siap':
-        _instruksi = 'Arahkan wajah ke kamera';
-        break;
-      case 'challenge':
-        _instruksi = _challenge == 'blink'
-            ? '👁️ Kedipkan mata sekali'
-            : '😊 Tersenyum lebar';
-        break;
-      case 'ok':
-        _instruksi = '✅ Verifikasi berhasil!';
-        break;
-      case 'foto':
-        _instruksi = '📸 Mengambil foto...';
-        break;
-      default:
-        _instruksi = '';
+    if (_fase == 'siap') {
+      _instruksi = 'Arahkan wajah ke kamera';
+    } else if (_fase == 'challenge') {
+      _instruksi = _challenge == 'blink'
+          ? '👁️ Kedipkan mata sekali'
+          : '😊 Tersenyum lebar';
+    } else if (_fase == 'ok') {
+      _instruksi = '✅ Verifikasi berhasil!';
+    } else if (_fase == 'foto') {
+      _instruksi = '📸 Mengambil foto...';
     }
   }
 
@@ -142,11 +151,14 @@ setState(() {
         _lastFaceDetected = DateTime.now().millisecondsSinceEpoch;
       } else {
         _faceVisible = false;
+
         if (_captureArmed && _fase == 'ok') {
           _captureArmed = false;
+
           setState(() {
             _pesan = 'Wajah hilang sebelum foto diambil';
           });
+
           _ulangi();
           _memproses = false;
           return;
@@ -178,6 +190,7 @@ setState(() {
       final mata     = (leftEye + rightEye) / 2;
       final senyum   = face.smilingProbability ?? 0.0;
 
+      // Toleransi sudut lebih besar
       if (eulerY.abs() > 35 || eulerX.abs() > 30) {
         setState(() => _instruksi = 'Hadapkan wajah ke depan');
         _memproses = false;
@@ -224,9 +237,10 @@ setState(() {
     } catch (e) {
       debugPrint('Detection error: $e');
     }
+
     _memproses = false;
   }
-
+  
   bool _isFaceStillPresent() {
     final now = DateTime.now().millisecondsSinceEpoch;
     return _faceVisible && (now - _lastFaceDetected) < 500;
@@ -234,6 +248,7 @@ setState(() {
 
   void _lulus() {
     _captureArmed = true;
+
     setState(() {
       _fase = 'ok';
       _countdown = 2;
@@ -250,19 +265,7 @@ setState(() {
     });
   }
 
-  // ✅ VERIFIKASI FOTO DENGAN ML KIT
-  Future<bool> _verifikasiFoto(File file) async {
-    try {
-      final inputImage = InputImage.fromFile(file);
-      final faces = await _detector!.processImage(inputImage);
-      return faces.isNotEmpty;
-    } catch (e) {
-      debugPrint('Gagal verifikasi foto: $e');
-      return false;
-    }
-  }
-
-  // ✅ AMBIL FOTO DENGAN VERIFIKASI (MODIFIED)
+  // PERBAIKAN: Proses pengambilan foto dibersihkan dari transisi exposure manual
   Future<void> _ambilFoto() async {
     if (_cam == null) return;
 
@@ -279,40 +282,29 @@ setState(() {
         _ulangi();
         return;
       }
-
-      await _cam!.stopImageStream();
-
-      await Future.delayed(
-  const Duration(milliseconds: 600),
-);
       
-      final file = await _cam!.takePicture();
-      if (!mounted) return;
-
-      final fotoFile = File(file.path);
-      setState(() => _foto = fotoFile);
-
-      setState(() {
-        _instruksi = '🔍 Memeriksa foto...';
-      });
-
-      final adaWajah = await _verifikasiFoto(fotoFile);
-      if (!mounted) return;
-
-      if (adaWajah) {
-        await Future.delayed(const Duration(milliseconds: 500));
-        _kirimAbsen();
-      } else {
+      if (!_faceVisible) {
         setState(() {
-          _pesan = 'Wajah tidak terdeteksi di foto. Ulangi proses.';
+          _pesan = 'Wajah tidak terdeteksi';
         });
         _ulangi();
+        return;
       }
+      
+      // Stop image stream untuk fokus jepret gambar tunggal resolusi penuh
+      await _cam!.stopImageStream();
+
+      // Dihapus: Kode setExposureMode manual yang bikin kamera kedip/pencahayaan berubah mendadak.
+      // Cukup berikan jeda sedikit agar hardware mempersiapkan modul shutter
+      await Future.delayed(const Duration(milliseconds: 300));
+
+      final file = await _cam!.takePicture();
+      if (!mounted) return;
+      setState(() => _foto = File(file.path));
+      await Future.delayed(const Duration(milliseconds: 500));
+      _kirimAbsen();
     } catch (e) {
-      setState(() {
-        _pesan = 'Gagal foto: $e';
-      });
-      _ulangi();
+      setState(() { _pesan = 'Gagal foto: $e'; _ulangi(); });
     }
   }
 
@@ -352,24 +344,23 @@ setState(() {
   }
 
   void _ulangi() {
-  _timer?.cancel();
-  _challenge = Random().nextBool() ? 'blink' : 'smile';
-
-  setState(() {
-    _foto = null;
-    _pesan = '';
-    _fase = 'siap';
-    _frameMata = 0;
-    _mataStabil = false;
-    _kedipMulai = false;
-    _senyumFrames = 0;
-    _countdown = 0;
-    _captureArmed = false;
-    _setInstruksi();
-  });
-
-  _cam?.startImageStream(_onFrame);
-}
+    _timer?.cancel();
+    _challenge = Random().nextBool() ? 'blink' : 'smile';
+    _exposureAdjusted = false;
+    setState(() {
+      _foto         = null;
+      _pesan        = '';
+      _fase         = 'siap';
+      _frameMata    = 0;
+      _mataStabil   = false;
+      _kedipMulai   = false;
+      _senyumFrames = 0;
+      _countdown    = 0;
+      _setInstruksi();
+    });
+    _adjustExposure();
+    _cam?.startImageStream(_onFrame);
+  }
 
   InputImage? _toInputImage(CameraImage img) {
     try {
@@ -429,11 +420,9 @@ setState(() {
               child: CircularProgressIndicator(color: Colors.white))
           : _pesan.isNotEmpty && _foto == null && _fase == 'init'
               ? _buildError()
-              : _foto != null && !_mengirim && _pesan.isEmpty
+              : _foto != null
                   ? _buildKonfirmasi(color, label)
-                  : _foto != null && _mengirim
-                      ? _buildKonfirmasi(color, label)
-                      : _buildKamera(color),
+                  : _buildKamera(color),
     );
   }
 
@@ -477,6 +466,7 @@ setState(() {
                         ),
                       ),
               ),
+
               if (_fase == 'ok' && _countdown > 0)
                 Container(
                   width: 80,
@@ -491,6 +481,9 @@ setState(() {
                       style: const TextStyle(
                         color: Colors.white,
                         fontSize: 48,
+                        boxShadow: [
+                          BoxShadow(color: Colors.black26, blurRadius: 4)
+                        ],
                         fontWeight: FontWeight.bold,
                       ),
                     ),
@@ -500,7 +493,9 @@ setState(() {
           ),
         ),
         const SizedBox(height: 20),
+
         _buildProgress(color),
+
         if (_pesan.isNotEmpty)
           Padding(
             padding: const EdgeInsets.only(top: 16, left: 20, right: 20),
@@ -583,7 +578,7 @@ setState(() {
     return Stack(
       fit: StackFit.expand,
       children: [
-        if (_foto != null) Image.file(_foto!, fit: BoxFit.cover),
+        Image.file(_foto!, fit: BoxFit.cover),
         if (_mengirim)
           Container(
             color: Colors.black54,
@@ -600,20 +595,20 @@ setState(() {
               ),
             ),
           ),
-        if (!_mengirim && _pesan.isNotEmpty)
-          Positioned(
-            bottom: 100, left: 20, right: 20,
-            child: Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                  color: Colors.red[900],
-                  borderRadius: BorderRadius.circular(10)),
-              child: Text(_pesan,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(color: Colors.white)),
+        if (!_mengirim) ...[
+          if (_pesan.isNotEmpty)
+            Positioned(
+              bottom: 100, left: 20, right: 20,
+              child: Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                    color: Colors.red[900],
+                    borderRadius: BorderRadius.circular(10)),
+                child: Text(_pesan,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(color: Colors.white)),
+              ),
             ),
-          ),
-        if (!_mengirim)
           Positioned(
             bottom: 30, left: 20, right: 20,
             child: ElevatedButton.icon(
@@ -629,6 +624,7 @@ setState(() {
               ),
             ),
           ),
+        ],
       ],
     );
   }
