@@ -178,4 +178,159 @@ static Future<Map<String, dynamic>> getGaleriHadir({
     return e.response?.data ?? {'status': false, 'message': 'Koneksi gagal'};
   }
 }
+
+// PENGUMUMAN
+static Future<Map<String, dynamic>> getPengumuman({
+  String filter = 'semua', int limit = 20, int offset = 0,
+}) async {
+  try {
+    final res = await _dio.get(
+      '${ApiConfig.pengumuman}?filter=$filter&limit=$limit&offset=$offset',
+      options: Options(headers: await _authHeader()),
+    );
+    return res.data;
+  } on DioException catch (e) {
+    return e.response?.data ?? {'status': false, 'message': 'Koneksi gagal'};
+  }
+}
+
+static Future<Map<String, dynamic>> buatPengumuman({
+  required String judul,
+  required String isi,
+  String emoji = '📢',
+  String? tanggalEvent,
+}) async {
+  try {
+    final headers = await _authHeader();
+    final res = await _dio.post(
+      ApiConfig.pengumuman,
+      data: {
+        'judul':         judul,
+        'isi':           isi,
+        'emoji':         emoji,
+        'tanggal_event': tanggalEvent,
+      },
+      options: Options(headers: headers),
+    );
+    return res.data;
+  } on DioException catch (e) {
+    return e.response?.data ?? {'status': false, 'message': 'Koneksi gagal'};
+  }
+}
+
+static Future<Map<String, dynamic>> hapusPengumuman(int id) async {
+  try {
+    final res = await _dio.delete(
+      '${ApiConfig.pengumuman}/$id',
+      options: Options(headers: await _authHeader()),
+    );
+    return res.data;
+  } on DioException catch (e) {
+    return e.response?.data ?? {'status': false, 'message': 'Koneksi gagal'};
+  }
+}
+
+static Future<Map<String, dynamic>> getKomentar(int id) async {
+  try {
+    final res = await _dio.get(
+      '${ApiConfig.pengumuman}/$id/komentar',
+      options: Options(headers: await _authHeader()),
+    );
+    return res.data;
+  } on DioException catch (e) {
+    return e.response?.data ?? {'status': false, 'message': 'Koneksi gagal'};
+  }
+}
+
+static Future<Map<String, dynamic>> kirimKomentar(
+    int id, String isi) async {
+  try {
+    final headers = await _authHeader();
+    final res = await _dio.post(
+      '${ApiConfig.pengumuman}/$id/komentar',
+      data: {'isi': isi},
+      options: Options(headers: headers),
+    );
+    return res.data;
+  } on DioException catch (e) {
+    return e.response?.data ?? {'status': false, 'message': 'Koneksi gagal'};
+  }
+}
+// PENGUMUMAN
+static Future<Map<String, dynamic>> getPengumuman({
+  String filter = 'semua', int limit = 20, int offset = 0,
+}) async {
+  try {
+    final res = await _dio.get(
+      '${ApiConfig.pengumuman}?filter=$filter&limit=$limit&offset=$offset',
+      options: Options(headers: await _authHeader()),
+    );
+    return res.data;
+  } on DioException catch (e) {
+    return e.response?.data ?? {'status': false, 'message': 'Koneksi gagal'};
+  }
+}
+
+static Future<Map<String, dynamic>> buatPengumuman({
+  required String judul,
+  required String isi,
+  String emoji = '📢',
+  String? tanggalEvent,
+}) async {
+  try {
+    final headers = await _authHeader();
+    final res = await _dio.post(
+      ApiConfig.pengumuman,
+      data: {
+        'judul':         judul,
+        'isi':           isi,
+        'emoji':         emoji,
+        'tanggal_event': tanggalEvent,
+      },
+      options: Options(headers: headers),
+    );
+    return res.data;
+  } on DioException catch (e) {
+    return e.response?.data ?? {'status': false, 'message': 'Koneksi gagal'};
+  }
+}
+
+static Future<Map<String, dynamic>> hapusPengumuman(int id) async {
+  try {
+    final res = await _dio.delete(
+      '${ApiConfig.pengumuman}/$id',
+      options: Options(headers: await _authHeader()),
+    );
+    return res.data;
+  } on DioException catch (e) {
+    return e.response?.data ?? {'status': false, 'message': 'Koneksi gagal'};
+  }
+}
+
+static Future<Map<String, dynamic>> getKomentar(int id) async {
+  try {
+    final res = await _dio.get(
+      '${ApiConfig.pengumuman}/$id/komentar',
+      options: Options(headers: await _authHeader()),
+    );
+    return res.data;
+  } on DioException catch (e) {
+    return e.response?.data ?? {'status': false, 'message': 'Koneksi gagal'};
+  }
+}
+
+static Future<Map<String, dynamic>> kirimKomentar(
+    int id, String isi) async {
+  try {
+    final headers = await _authHeader();
+    final res = await _dio.post(
+      '${ApiConfig.pengumuman}/$id/komentar',
+      data: {'isi': isi},
+      options: Options(headers: headers),
+    );
+    return res.data;
+  } on DioException catch (e) {
+    return e.response?.data ?? {'status': false, 'message': 'Koneksi gagal'};
+  }
+}
 }
