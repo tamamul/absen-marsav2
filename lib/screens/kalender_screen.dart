@@ -1,7 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:hijri/hijri_calendar.dart';
+import 'dart:convert';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../helpers/hari_besar.dart';
 import '../helpers/hari_besar_custom.dart';
+import '../services/api_service.dart';
+import 'pengumuman_screen.dart';
 
 class KalenderScreen extends StatefulWidget {
   const KalenderScreen({super.key});
@@ -13,46 +17,93 @@ class KalenderScreen extends StatefulWidget {
 class _KalenderScreenState extends State<KalenderScreen> {
   DateTime _bulanAktif  = DateTime(DateTime.now().year, DateTime.now().month);
   DateTime _hariDipilih = DateTime.now();
-  List<HariBesar>       _hariBesarNasional = [];
-  List<HariBesarCustom> _hariBesarCustom   = [];
+
+  List<HariBesar>       _nasional = [];
+  List<HariBesarCustom> _custom   = []; // privat + publik (cache lokal)
+
+  int? _myUserId;
+  bool _loadingPublik = false;
 
   @override
   void initState() {
     super.initState();
+    _loadUserId();
     _load();
   }
 
+  Future<void> _loadUserId() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw   = prefs.getString('user_data');
+    if (raw != null) {
+      final user = jsonDecode(raw);
+      setState(() => _myUserId =
+          int.tryParse(user['id'].toString()));
+    }
+  }
+
   Future<void> _load() async {
-    final custom = await HariBesarCustomDb.getAll();
-    setState(() {
-      _hariBesarNasional = HariBesarHelper.getAll(_bulanAktif.year);
-      _hariBesarCustom   = custom;
-    });
+    _nasional = HariBesarHelper.getAll(_bulanAktif.year);
+    await _loadPrivat();
+    await _loadPublik();
+  }
+
+  Future<void> _loadPrivat() async {
+    final all = await HariBesarCustomDb.getAll();
+    setState(() => _custom = all);
+  }
+
+  Future<void> _loadPublik() async {
+    setState(() => _loadingPublik = true);
+    try {
+      final res = await ApiService.getPengumuman(
+          filter: 'semua', limit: 100);
+      if (res['status'] == true) {
+        final list = (res['data'] as List)
+            .where((e) => e['tanggal_event'] != null &&
+                (e['tanggal_event'] as String).isNotEmpty)
+            .map((e) => HariBesarCustom.fromServer(e))
+            .toList();
+        await HariBesarCustomDb.savePublikFromServer(list);
+        final all = await HariBesarCustomDb.getAll();
+        setState(() => _custom = all);
+      }
+    } catch (_) {}
+    setState(() => _loadingPublik = false);
   }
 
   void _bulanSebelum() {
     setState(() {
       _bulanAktif = DateTime(_bulanAktif.year, _bulanAktif.month - 1);
-      _hariBesarNasional = HariBesarHelper.getAll(_bulanAktif.year);
+      _nasional   = HariBesarHelper.getAll(_bulanAktif.year);
     });
   }
 
   void _bulanBerikut() {
     setState(() {
       _bulanAktif = DateTime(_bulanAktif.year, _bulanAktif.month + 1);
-      _hariBesarNasional = HariBesarHelper.getAll(_bulanAktif.year);
+      _nasional   = HariBesarHelper.getAll(_bulanAktif.year);
     });
   }
 
   List<HariBesar> _getNasionalTanggal(DateTime dt) {
-    return _hariBesarNasional.where((h) =>
+    return _nasional.where((h) =>
         h.tanggal.day   == dt.day &&
         h.tanggal.month == dt.month &&
         h.tanggal.year  == dt.year).toList();
   }
 
   List<HariBesarCustom> _getCustomTanggal(DateTime dt) {
-    return _hariBesarCustom.where((h) => h.cocokDengan(dt)).toList();
+    return _custom.where((h) => h.cocokDengan(dt)).toList();
+  }
+
+  List<HariBesarCustom> _getPrivatTanggal(DateTime dt) {
+    return _custom.where((h) =>
+        !h.isPublik && h.cocokDengan(dt)).toList();
+  }
+
+  List<HariBesarCustom> _getPublikTanggal(DateTime dt) {
+    return _custom.where((h) =>
+        h.isPublik && h.cocokDengan(dt)).toList();
   }
 
   bool _isHariIni(DateTime dt) {
@@ -63,7 +114,7 @@ class _KalenderScreenState extends State<KalenderScreen> {
   }
 
   bool _isDipilih(DateTime dt) =>
-      dt.day == _hariDipilih.day &&
+      dt.day   == _hariDipilih.day &&
       dt.month == _hariDipilih.month &&
       dt.year  == _hariDipilih.year;
 
@@ -81,21 +132,22 @@ class _KalenderScreenState extends State<KalenderScreen> {
     return grid;
   }
 
-  // ── Form tambah/edit ─────────────────────────────────────────
   void _showForm({HariBesarCustom? existing}) {
     final namaCtrl    = TextEditingController(text: existing?.nama    ?? '');
     final catatanCtrl = TextEditingController(text: existing?.catatan ?? '');
-    String emoji      = existing?.emoji ?? '📅';
+    String   emoji    = existing?.emoji    ?? '📅';
     DateTime tanggal  = existing != null
         ? DateTime(
             existing.tahunan ? DateTime.now().year : existing.tanggalYear,
             existing.tanggalMonth,
             existing.tanggalDay)
         : _hariDipilih;
-    bool tahunan = existing?.tahunan ?? false;
+    bool tahunan  = existing?.tahunan  ?? false;
+    bool isPublik = existing?.isPublik ?? false;
 
     final emojis = ['📅','🎉','🎂','🌙','⭐','🏆','📚','❤️',
-                    '🎊','🕌','🇮🇩','👨‍👩‍👧','🏥','✈️','💼','🎓'];
+                    '🎊','🕌','🇮🇩','👨‍👩‍👧','🏥','✈️','💼','🎓',
+                    '📢','⚠️','🔔','💡','📝','🏫'];
 
     showModalBottomSheet(
       context: context,
@@ -117,7 +169,6 @@ class _KalenderScreenState extends State<KalenderScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                // Handle
                 Center(
                   child: Container(
                     width: 40, height: 4,
@@ -127,22 +178,14 @@ class _KalenderScreenState extends State<KalenderScreen> {
                   ),
                 ),
                 const SizedBox(height: 16),
-
                 Text(
-                  existing == null
-                      ? 'Tambah Pengingat'
-                      : 'Edit Pengingat',
+                  existing == null ? 'Tambah Pengingat' : 'Edit Pengingat',
                   style: const TextStyle(
                       fontSize: 18, fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 16),
 
                 // Pilih emoji
-                const Text('Ikon',
-                    style: TextStyle(
-                        fontWeight: FontWeight.w500,
-                        color: Colors.grey)),
-                const SizedBox(height: 8),
                 SizedBox(
                   height: 48,
                   child: ListView.builder(
@@ -173,8 +216,7 @@ class _KalenderScreenState extends State<KalenderScreen> {
                     ),
                   ),
                 ),
-
-                const SizedBox(height: 16),
+                const SizedBox(height: 12),
 
                 // Nama
                 TextField(
@@ -187,7 +229,6 @@ class _KalenderScreenState extends State<KalenderScreen> {
                         style: const TextStyle(fontSize: 20)),
                   ),
                 ),
-
                 const SizedBox(height: 12),
 
                 // Tanggal
@@ -206,9 +247,7 @@ class _KalenderScreenState extends State<KalenderScreen> {
                         child: child!,
                       ),
                     );
-                    if (picked != null) {
-                      setModal(() => tanggal = picked);
-                    }
+                    if (picked != null) setModal(() => tanggal = picked);
                   },
                   child: Container(
                     padding: const EdgeInsets.all(14),
@@ -229,10 +268,9 @@ class _KalenderScreenState extends State<KalenderScreen> {
                     ),
                   ),
                 ),
-
                 const SizedBox(height: 12),
 
-                // Toggle tahunan
+                // Tahunan
                 Container(
                   padding: const EdgeInsets.symmetric(
                       horizontal: 14, vertical: 4),
@@ -266,7 +304,64 @@ class _KalenderScreenState extends State<KalenderScreen> {
                     ],
                   ),
                 ),
+                const SizedBox(height: 12),
 
+                // Publik/Privat
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 14, vertical: 4),
+                  decoration: BoxDecoration(
+                    border: Border.all(
+                      color: isPublik
+                          ? Colors.orange.withOpacity(0.5)
+                          : Colors.grey[300]!,
+                    ),
+                    borderRadius: BorderRadius.circular(12),
+                    color: isPublik
+                        ? Colors.orange.withOpacity(0.05)
+                        : null,
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        isPublik ? Icons.public : Icons.lock_outline,
+                        color: isPublik
+                            ? Colors.orange
+                            : Colors.grey,
+                        size: 20,
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              isPublik ? 'Publik' : 'Privat',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w500,
+                                color: isPublik
+                                    ? Colors.orange
+                                    : Colors.black87,
+                              ),
+                            ),
+                            Text(
+                              isPublik
+                                  ? 'Semua user bisa lihat & komentar'
+                                  : 'Hanya saya yang bisa lihat',
+                              style: const TextStyle(
+                                  fontSize: 11, color: Colors.grey),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Switch(
+                        value: isPublik,
+                        activeColor: Colors.orange,
+                        onChanged: (v) => setModal(() => isPublik = v),
+                      ),
+                    ],
+                  ),
+                ),
                 const SizedBox(height: 12),
 
                 // Catatan
@@ -274,16 +369,17 @@ class _KalenderScreenState extends State<KalenderScreen> {
                   controller: catatanCtrl,
                   maxLines: 2,
                   decoration: InputDecoration(
-                    labelText: 'Catatan (opsional)',
+                    labelText: isPublik
+                        ? 'Deskripsi (tampil sebagai isi pengumuman)'
+                        : 'Catatan (opsional)',
                     border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12)),
                     prefixIcon: const Icon(Icons.notes),
                   ),
                 ),
-
                 const SizedBox(height: 20),
 
-                // Tombol simpan
+                // Tombol
                 Row(
                   children: [
                     if (existing != null)
@@ -291,6 +387,12 @@ class _KalenderScreenState extends State<KalenderScreen> {
                         child: OutlinedButton.icon(
                           onPressed: () async {
                             Navigator.pop(ctx);
+                            // Kalau publik hapus dari server juga
+                            if (existing.isPublik &&
+                                existing.serverId != null) {
+                              await ApiService.hapusPengumuman(
+                                  existing.serverId!);
+                            }
                             await HariBesarCustomDb.delete(existing.id!);
                             await _load();
                             if (!mounted) return;
@@ -320,14 +422,39 @@ class _KalenderScreenState extends State<KalenderScreen> {
                       flex: 2,
                       child: ElevatedButton.icon(
                         onPressed: () async {
-                          if (namaCtrl.text.trim().isEmpty) {
-                            ScaffoldMessenger.of(ctx).showSnackBar(
-                              const SnackBar(
-                                  content:
-                                      Text('Nama tidak boleh kosong')),
-                            );
-                            return;
+                          if (namaCtrl.text.trim().isEmpty) return;
+
+                          final tglStr =
+                              '${tanggal.year}-${tanggal.month.toString().padLeft(2, '0')}-${tanggal.day.toString().padLeft(2, '0')}';
+
+                          int? serverId = existing?.serverId;
+
+                          // Kalau publik → kirim/update ke server
+                          if (isPublik) {
+                            if (serverId == null) {
+                              // Buat baru di server
+                              final res =
+                                  await ApiService.buatPengumuman(
+                                judul:        namaCtrl.text.trim(),
+                                isi:          catatanCtrl.text.trim().isEmpty
+                                    ? namaCtrl.text.trim()
+                                    : catatanCtrl.text.trim(),
+                                emoji:        emoji,
+                                tanggalEvent: tahunan ? null : tglStr,
+                              );
+                              if (res['status'] == true) {
+                                serverId = int.tryParse(
+                                    res['data']['id'].toString());
+                              }
+                            }
+                          } else if (existing?.isPublik == true &&
+                              existing?.serverId != null) {
+                            // Diubah dari publik → privat, hapus dari server
+                            await ApiService.hapusPengumuman(
+                                existing!.serverId!);
+                            serverId = null;
                           }
+
                           final h = HariBesarCustom(
                             id:           existing?.id,
                             nama:         namaCtrl.text.trim(),
@@ -337,6 +464,8 @@ class _KalenderScreenState extends State<KalenderScreen> {
                             tanggalYear:  tahunan ? 0 : tanggal.year,
                             catatan:      catatanCtrl.text.trim(),
                             tahunan:      tahunan,
+                            isPublik:     isPublik,
+                            serverId:     serverId,
                           );
                           await HariBesarCustomDb.save(h);
                           Navigator.pop(ctx);
@@ -352,7 +481,9 @@ class _KalenderScreenState extends State<KalenderScreen> {
                           );
                         },
                         icon: const Icon(Icons.save),
-                        label: Text(existing == null ? 'Simpan' : 'Update'),
+                        label: Text(existing == null
+                            ? 'Simpan'
+                            : 'Update'),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: const Color(0xFF1B5E20),
                           foregroundColor: Colors.white,
@@ -379,7 +510,8 @@ class _KalenderScreenState extends State<KalenderScreen> {
     final hijriBulan   = HijriCalendar.fromDate(
         DateTime(_bulanAktif.year, _bulanAktif.month, 15));
     final nasionalDipilih = _getNasionalTanggal(_hariDipilih);
-    final customDipilih   = _getCustomTanggal(_hariDipilih);
+    final privatDipilih   = _getPrivatTanggal(_hariDipilih);
+    final publikDipilih   = _getPublikTanggal(_hariDipilih);
     final hijriDipilih    = HijriCalendar.fromDate(_hariDipilih);
 
     return Scaffold(
@@ -389,9 +521,21 @@ class _KalenderScreenState extends State<KalenderScreen> {
         foregroundColor: Colors.white,
         title: const Text('Kalender'),
         actions: [
+          if (_loadingPublik)
+            const Padding(
+              padding: EdgeInsets.all(16),
+              child: SizedBox(
+                width: 18, height: 18,
+                child: CircularProgressIndicator(
+                    color: Colors.white, strokeWidth: 2),
+              ),
+            ),
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: _loadPublik,
+          ),
           IconButton(
             icon: const Icon(Icons.add),
-            tooltip: 'Tambah Pengingat',
             onPressed: () => _showForm(),
           ),
         ],
@@ -424,7 +568,8 @@ class _KalenderScreenState extends State<KalenderScreen> {
                           Text(
                             '${HariBesarHelper.namaBulanHijri(hijriBulan.hMonth)} ${hijriBulan.hYear} H',
                             style: const TextStyle(
-                                color: Colors.white70, fontSize: 12),
+                                color: Colors.white70,
+                                fontSize: 12),
                           ),
                         ],
                       ),
@@ -436,6 +581,23 @@ class _KalenderScreenState extends State<KalenderScreen> {
                     ),
                   ],
                 ),
+                // Legend
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      _legend('Nasional', Colors.red),
+                      const SizedBox(width: 12),
+                      _legend('Islam', const Color(0xFF81C784)),
+                      const SizedBox(width: 12),
+                      _legend('Privat 🔒', Colors.blue),
+                      const SizedBox(width: 12),
+                      _legend('Publik 🌐', Colors.orange),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 8),
                 // Header hari
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -461,7 +623,7 @@ class _KalenderScreenState extends State<KalenderScreen> {
             ),
           ),
 
-          // Grid kalender
+          // Grid
           Container(
             color: Colors.white,
             padding: const EdgeInsets.symmetric(
@@ -492,7 +654,7 @@ class _KalenderScreenState extends State<KalenderScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Info tanggal dipilih
+                  // Info tanggal
                   Card(
                     shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(16)),
@@ -507,13 +669,11 @@ class _KalenderScreenState extends State<KalenderScreen> {
                               borderRadius: BorderRadius.circular(12),
                             ),
                             child: Center(
-                              child: Text(
-                                '${_hariDipilih.day}',
-                                style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 26,
-                                    fontWeight: FontWeight.bold),
-                              ),
+                              child: Text('${_hariDipilih.day}',
+                                  style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 26,
+                                      fontWeight: FontWeight.bold)),
                             ),
                           ),
                           const SizedBox(width: 14),
@@ -536,11 +696,9 @@ class _KalenderScreenState extends State<KalenderScreen> {
                               ],
                             ),
                           ),
-                          // Tombol tambah di tanggal ini
                           IconButton(
                             icon: const Icon(Icons.add_circle,
                                 color: Color(0xFF1B5E20)),
-                            tooltip: 'Tambah pengingat',
                             onPressed: () => _showForm(),
                           ),
                         ],
@@ -551,48 +709,37 @@ class _KalenderScreenState extends State<KalenderScreen> {
                   // Hari besar nasional/islam
                   if (nasionalDipilih.isNotEmpty) ...[
                     const SizedBox(height: 12),
-                    _sectionLabel('Hari Besar'),
+                    _sectionLabel('🗓️ Hari Besar'),
                     ...nasionalDipilih.map(_buildNasionalItem),
                   ],
 
-                  // Pengingat custom
-                  if (customDipilih.isNotEmpty) ...[
+                  // Pengingat publik (dari server)
+                  if (publikDipilih.isNotEmpty) ...[
                     const SizedBox(height: 12),
-                    _sectionLabel('Pengingat'),
-                    ...customDipilih.map(_buildCustomItem),
+                    _sectionLabel('🌐 Agenda Publik'),
+                    ...publikDipilih.map((h) => _buildPublikItem(h)),
                   ],
 
-                  // Semua pengingat custom
-                  if (_hariBesarCustom.isNotEmpty) ...[
-                    const SizedBox(height: 16),
-                    Row(
-                      children: [
-                        _sectionLabel('Semua Pengingat'),
-                        const Spacer(),
-                        Text(
-                          '${_hariBesarCustom.length} item',
-                          style: const TextStyle(
-                              fontSize: 12, color: Colors.grey),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    ..._hariBesarCustom.map(_buildCustomItem),
+                  // Pengingat privat
+                  if (privatDipilih.isNotEmpty) ...[
+                    const SizedBox(height: 12),
+                    _sectionLabel('🔒 Pengingat Pribadi'),
+                    ...privatDipilih.map((h) =>
+                        _buildCustomItem(h, isPrivat: true)),
                   ],
 
                   // Mendatang
                   const SizedBox(height: 16),
-                  _sectionLabel('Hari Besar Mendatang'),
+                  _sectionLabel('📅 Mendatang (30 hari)'),
                   const SizedBox(height: 8),
                   ..._buildMendatang(),
-                  const SizedBox(height: 24),
+                  const SizedBox(height: 80),
                 ],
               ),
             ),
           ),
         ],
       ),
-      // FAB tambah
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => _showForm(),
         backgroundColor: const Color(0xFF1B5E20),
@@ -600,6 +747,23 @@ class _KalenderScreenState extends State<KalenderScreen> {
         icon: const Icon(Icons.add),
         label: const Text('Tambah Pengingat'),
       ),
+    );
+  }
+
+  Widget _legend(String label, Color color) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 8, height: 8,
+          decoration: BoxDecoration(
+              color: color, shape: BoxShape.circle),
+        ),
+        const SizedBox(width: 4),
+        Text(label,
+            style: const TextStyle(
+                color: Colors.white70, fontSize: 10)),
+      ],
     );
   }
 
@@ -612,13 +776,14 @@ class _KalenderScreenState extends State<KalenderScreen> {
   }
 
   Widget _buildTanggal(DateTime dt) {
-    final nasional = _getNasionalTanggal(dt);
-    final custom   = _getCustomTanggal(dt);
+    final nasional  = _getNasionalTanggal(dt);
+    final custom    = _getCustomTanggal(dt);
+    final privat    = custom.where((h) => !h.isPublik).toList();
+    final publik    = custom.where((h) => h.isPublik).toList();
     final isHariIni = _isHariIni(dt);
     final isDipilih = _isDipilih(dt);
     final isMinggu  = dt.weekday == 7;
     final isLibur   = nasional.isNotEmpty;
-    final hasCustom = custom.isNotEmpty;
 
     return GestureDetector(
       onTap: () => setState(() => _hariDipilih = dt),
@@ -648,31 +813,20 @@ class _KalenderScreenState extends State<KalenderScreen> {
                             : Colors.black87,
                   )),
             ),
-            // Dot bawah
-            if ((isLibur || hasCustom) && !isDipilih)
+            // Dots
+            if ((isLibur || privat.isNotEmpty || publik.isNotEmpty) &&
+                !isDipilih)
               Positioned(
                 bottom: 3, left: 0, right: 0,
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     if (isLibur)
-                      Container(
-                        width: 4, height: 4,
-                        margin: const EdgeInsets.symmetric(
-                            horizontal: 1),
-                        decoration: const BoxDecoration(
-                            color: Colors.red,
-                            shape: BoxShape.circle),
-                      ),
-                    if (hasCustom)
-                      Container(
-                        width: 4, height: 4,
-                        margin: const EdgeInsets.symmetric(
-                            horizontal: 1),
-                        decoration: const BoxDecoration(
-                            color: Colors.blue,
-                            shape: BoxShape.circle),
-                      ),
+                      _dot(Colors.red),
+                    if (privat.isNotEmpty)
+                      _dot(Colors.blue),
+                    if (publik.isNotEmpty)
+                      _dot(Colors.orange),
                   ],
                 ),
               ),
@@ -681,6 +835,12 @@ class _KalenderScreenState extends State<KalenderScreen> {
       ),
     );
   }
+
+  Widget _dot(Color color) => Container(
+    width: 4, height: 4,
+    margin: const EdgeInsets.symmetric(horizontal: 1),
+    decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+  );
 
   Widget _buildNasionalItem(HariBesar h) {
     final color = h.tipe == 'islam'
@@ -711,8 +871,7 @@ class _KalenderScreenState extends State<KalenderScreen> {
                       ? 'Hari Besar Islam'
                       : 'Hari Nasional',
                   style: TextStyle(
-                      fontSize: 11,
-                      color: color.withOpacity(0.7)),
+                      fontSize: 11, color: color.withOpacity(0.7)),
                 ),
               ],
             ),
@@ -722,7 +881,72 @@ class _KalenderScreenState extends State<KalenderScreen> {
     );
   }
 
-  Widget _buildCustomItem(HariBesarCustom h) {
+  Widget _buildPublikItem(HariBesarCustom h) {
+    return GestureDetector(
+      onTap: () async {
+        if (h.serverId == null) return;
+        // Buka detail pengumuman + komentar
+        final res = await ApiService.getPengumuman(
+            filter: 'semua', limit: 100);
+        if (res['status'] == true) {
+          final list = res['data'] as List;
+          final data = list.firstWhere(
+            (e) => e['id'].toString() == h.serverId.toString(),
+            orElse: () => null,
+          );
+          if (data != null && mounted) {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => DetailPengumumanScreen(
+                  pengumuman: Pengumuman.fromJson(data),
+                  myUserId:   _myUserId,
+                  onDeleted:  _load,
+                ),
+              ),
+            );
+          }
+        }
+      },
+      child: Container(
+        margin: const EdgeInsets.only(top: 8),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Colors.orange.withOpacity(0.07),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: Colors.orange.withOpacity(0.3)),
+        ),
+        child: Row(
+          children: [
+            Text(h.emoji, style: const TextStyle(fontSize: 20)),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(h.nama,
+                      style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          color: Colors.orange)),
+                  if (h.catatan.isNotEmpty)
+                    Text(h.catatan,
+                        style: const TextStyle(
+                            fontSize: 11, color: Colors.grey),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis),
+                ],
+              ),
+            ),
+            const Icon(Icons.chevron_right,
+                color: Colors.orange, size: 20),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCustomItem(HariBesarCustom h,
+      {bool isPrivat = false}) {
     return GestureDetector(
       onTap: () => _showForm(existing: h),
       child: Container(
@@ -745,13 +969,6 @@ class _KalenderScreenState extends State<KalenderScreen> {
                       style: const TextStyle(
                           fontWeight: FontWeight.bold,
                           color: Colors.blue)),
-                  Text(
-                    h.tahunan
-                        ? 'Setiap ${h.tanggalDay} ${HariBesarHelper.namaBulan(h.tanggalMonth)}'
-                        : '${h.tanggalDay} ${HariBesarHelper.namaBulan(h.tanggalMonth)} ${h.tanggalYear}',
-                    style: const TextStyle(
-                        fontSize: 11, color: Colors.blue),
-                  ),
                   if (h.catatan.isNotEmpty)
                     Text(h.catatan,
                         style: const TextStyle(
@@ -761,6 +978,9 @@ class _KalenderScreenState extends State<KalenderScreen> {
                 ],
               ),
             ),
+            const Icon(Icons.lock_outline,
+                color: Colors.blue, size: 16),
+            const SizedBox(width: 4),
             const Icon(Icons.edit, size: 16, color: Colors.blue),
           ],
         ),
@@ -769,36 +989,44 @@ class _KalenderScreenState extends State<KalenderScreen> {
   }
 
   List<Widget> _buildMendatang() {
-    final now       = DateTime.now();
-    final nasional  = HariBesarHelper.getMendatang(now, hari: 60);
-    final customAll = _hariBesarCustom.where((h) {
+    final now      = DateTime.now();
+    final nasional = HariBesarHelper.getMendatang(now, hari: 30);
+    final customAll = _custom.where((h) {
       final dt = DateTime(
           h.tahunan ? now.year : h.tanggalYear,
-          h.tanggalMonth,
-          h.tanggalDay);
+          h.tanggalMonth, h.tanggalDay);
       return dt.isAfter(now) &&
-          dt.isBefore(now.add(const Duration(days: 60)));
+          dt.isBefore(now.add(const Duration(days: 30)));
     }).toList();
 
-    // Gabung dan sort
     final semua = <Map<String, dynamic>>[];
     for (final h in nasional) {
-      semua.add({'tanggal': h.tanggal, 'nama': h.nama,
-                 'emoji': h.emoji ?? '📅', 'tipe': h.tipe});
+      semua.add({
+        'tanggal': h.tanggal,
+        'nama':    h.nama,
+        'emoji':   h.emoji ?? '📅',
+        'tipe':    h.tipe,
+        'obj':     null,
+      });
     }
     for (final h in customAll) {
       final dt = DateTime(
           h.tahunan ? now.year : h.tanggalYear,
           h.tanggalMonth, h.tanggalDay);
-      semua.add({'tanggal': dt, 'nama': h.nama,
-                 'emoji': h.emoji, 'tipe': 'custom'});
+      semua.add({
+        'tanggal': dt,
+        'nama':    h.nama,
+        'emoji':   h.emoji,
+        'tipe':    h.isPublik ? 'publik' : 'privat',
+        'obj':     h,
+      });
     }
     semua.sort((a, b) =>
         (a['tanggal'] as DateTime).compareTo(b['tanggal'] as DateTime));
 
     if (semua.isEmpty) {
       return [
-        const Text('Tidak ada hari besar dalam 60 hari ke depan',
+        const Text('Tidak ada event dalam 30 hari ke depan',
             style: TextStyle(color: Colors.grey))
       ];
     }
@@ -806,62 +1034,72 @@ class _KalenderScreenState extends State<KalenderScreen> {
     return semua.take(10).map((h) {
       final dt      = h['tanggal'] as DateTime;
       final selisih = dt.difference(now).inDays;
-      final isCustom = h['tipe'] == 'custom';
-      final color   = isCustom
-          ? Colors.blue
-          : h['tipe'] == 'islam'
-              ? const Color(0xFF1B5E20)
-              : Colors.red[700]!;
+      final tipe    = h['tipe'] as String;
+      final color   = tipe == 'publik'
+          ? Colors.orange
+          : tipe == 'privat'
+              ? Colors.blue
+              : tipe == 'islam'
+                  ? const Color(0xFF1B5E20)
+                  : Colors.red[700]!;
 
-      return Container(
-        margin: const EdgeInsets.only(bottom: 8),
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: Colors.grey[200]!),
-        ),
-        child: Row(
-          children: [
-            Text(h['emoji'] as String,
-                style: const TextStyle(fontSize: 20)),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(h['nama'] as String,
+      return GestureDetector(
+        onTap: () {
+          setState(() => _hariDipilih = dt);
+          if (tipe == 'publik' && h['obj'] != null) {
+            _buildPublikItem(h['obj'] as HariBesarCustom);
+          }
+        },
+        child: Container(
+          margin: const EdgeInsets.only(bottom: 8),
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: Colors.grey[200]!),
+          ),
+          child: Row(
+            children: [
+              Text(h['emoji'] as String,
+                  style: const TextStyle(fontSize: 20)),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(h['nama'] as String,
+                        style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 13)),
+                    Text(
+                      '${HariBesarHelper.namaHari(dt)}, ${dt.day} ${HariBesarHelper.namaBulan(dt.month)}',
                       style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 13)),
-                  Text(
-                    '${HariBesarHelper.namaHari(dt)}, ${dt.day} ${HariBesarHelper.namaBulan(dt.month)}',
-                    style: const TextStyle(
-                        fontSize: 12, color: Colors.grey),
-                  ),
-                ],
+                          fontSize: 12, color: Colors.grey),
+                    ),
+                  ],
+                ),
               ),
-            ),
-            Container(
-              padding: const EdgeInsets.symmetric(
-                  horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(
-                color: selisih <= 7
-                    ? Colors.red.withOpacity(0.1)
-                    : color.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(20),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: selisih <= 7
+                      ? Colors.red.withOpacity(0.1)
+                      : color.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Text(
+                  selisih == 0
+                      ? 'Hari ini'
+                      : '$selisih hari lagi',
+                  style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                      color: selisih <= 7 ? Colors.red : color),
+                ),
               ),
-              child: Text(
-                selisih == 0
-                    ? 'Hari ini'
-                    : '$selisih hari lagi',
-                style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.bold,
-                    color: selisih <= 7 ? Colors.red : color),
-              ),
-            ),
-          ],
+            ],
+          ),
         ),
       );
     }).toList();
