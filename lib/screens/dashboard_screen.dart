@@ -681,6 +681,58 @@ _toolItem(
     );
   }
   
+  Widget _buildProfileCard() {
+    return Card(
+      shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16)),
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Row(
+          children: [
+            CircleAvatar(
+              radius: 28,
+              backgroundColor: const Color(0xFF1B5E20),
+              backgroundImage: _fotoProfil != null
+                  ? FileImage(_fotoProfil!)
+                  : null,
+              child: _fotoProfil == null
+                  ? Text(
+                      _pegawai?.nama.isNotEmpty == true
+                          ? _pegawai!.nama[0].toUpperCase()
+                          : '?',
+                      style: const TextStyle(
+                          fontSize: 22,
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold),
+                    )
+                  : null,
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(_pegawai?.nama ?? '-',
+                      style: const TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.bold)),
+                  Text(_pegawai?.jabatan ?? '-',
+                      style: const TextStyle(
+                          color: Colors.grey, fontSize: 13)),
+                  Text(_pegawai?.namaLokasi ?? '-',
+                      style: const TextStyle(
+                          color: Color(0xFF1B5E20),
+                          fontWeight: FontWeight.w500,
+                          fontSize: 12)),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+  
   Widget _buildPengumumanCard() {
   if (_pengumuman.isEmpty) return const SizedBox();
   return Card(
@@ -723,7 +775,7 @@ _toolItem(
                 MaterialPageRoute(
                   builder: (_) => DetailPengumumanScreen(
                     pengumuman: Pengumuman.fromJson(p),
-                    myUserId:   null,
+                    myUserId: _myUserId,
                     onDeleted:  _loadData,
                   ),
                 ),
@@ -785,59 +837,6 @@ _toolItem(
     ),
   );
 }
-  
-
-  Widget _buildProfileCard() {
-    return Card(
-      shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16)),
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Row(
-          children: [
-            CircleAvatar(
-              radius: 28,
-              backgroundColor: const Color(0xFF1B5E20),
-              backgroundImage: _fotoProfil != null
-                  ? FileImage(_fotoProfil!)
-                  : null,
-              child: _fotoProfil == null
-                  ? Text(
-                      _pegawai?.nama.isNotEmpty == true
-                          ? _pegawai!.nama[0].toUpperCase()
-                          : '?',
-                      style: const TextStyle(
-                          fontSize: 22,
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold),
-                    )
-                  : null,
-            ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(_pegawai?.nama ?? '-',
-                      style: const TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.bold)),
-                  Text(_pegawai?.jabatan ?? '-',
-                      style: const TextStyle(
-                          color: Colors.grey, fontSize: 13)),
-                  Text(_pegawai?.namaLokasi ?? '-',
-                      style: const TextStyle(
-                          color: Color(0xFF1B5E20),
-                          fontWeight: FontWeight.w500,
-                          fontSize: 12)),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 
   Widget _buildLokasiCard() {
     Color color;
