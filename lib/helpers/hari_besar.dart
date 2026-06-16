@@ -33,6 +33,24 @@ class HariBesarHelper {
       HariBesar(nama: 'Hari Kartini',         tanggal: DateTime(tahun, 4, 21),  tipe: 'nasional', emoji: '👩‍🎓'),
       HariBesar(nama: 'Hari Batik',           tanggal: DateTime(tahun, 10, 2),  tipe: 'nasional', emoji: '🎨'),
       HariBesar(nama: 'Hari Sumpah Pemuda',   tanggal: DateTime(tahun, 10, 28), tipe: 'nasional', emoji: '✊'),
+
+
+HariBesar(nama: 'Hari Gizi Nasional', tanggal: DateTime(tahun, 1, 25), tipe: 'nasional', emoji: '🥗'),
+HariBesar(nama: 'Hari Pers Nasional', tanggal: DateTime(tahun, 2, 9), tipe: 'nasional', emoji: '📰'),
+HariBesar(nama: 'Hari Sampah Nasional', tanggal: DateTime(tahun, 2, 21), tipe: 'nasional', emoji: '♻️'),
+HariBesar(nama: 'Hari Perempuan Internasional', tanggal: DateTime(tahun, 3, 8), tipe: 'nasional', emoji: '👩'),
+HariBesar(nama: 'Hari Air Sedunia', tanggal: DateTime(tahun, 3, 22), tipe: 'nasional', emoji: '💧'),
+HariBesar(nama: 'Hari Kesehatan Sedunia', tanggal: DateTime(tahun, 4, 7), tipe: 'nasional', emoji: '🏥'),
+HariBesar(nama: 'Hari Bumi', tanggal: DateTime(tahun, 4, 22), tipe: 'nasional', emoji: '🌍'),
+HariBesar(nama: 'Hari Buku Nasional', tanggal: DateTime(tahun, 5, 17), tipe: 'nasional', emoji: '📚'),
+HariBesar(nama: 'Hari Anak Nasional', tanggal: DateTime(tahun, 7, 23), tipe: 'nasional', emoji: '🧒'),
+HariBesar(nama: 'Hari Pramuka', tanggal: DateTime(tahun, 8, 14), tipe: 'nasional', emoji: '⛺'),
+HariBesar(nama: 'Hari Olahraga Nasional', tanggal: DateTime(tahun, 9, 9), tipe: 'nasional', emoji: '🏆'),
+HariBesar(nama: 'Hari TNI', tanggal: DateTime(tahun, 10, 5), tipe: 'nasional', emoji: '🪖'),
+HariBesar(nama: 'Hari Santri Nasional', tanggal: DateTime(tahun, 10, 22), tipe: 'nasional', emoji: '🕌'),
+HariBesar(nama: 'Hari Kesehatan Nasional', tanggal: DateTime(tahun, 11, 12), tipe: 'nasional', emoji: '⚕️'),
+HariBesar(nama: 'Hari Korpri', tanggal: DateTime(tahun, 11, 29), tipe: 'nasional', emoji: '🏢'),
+
     ];
   }
 
@@ -61,6 +79,15 @@ class HariBesarHelper {
       [12, 10, 'Idul Adha',              '🐄'],
       [12, 11, 'Idul Adha Hari 2',       '🐄'],
       [12, 12, 'Idul Adha Hari 3',       '🐄'],
+
+[7, 1,  'Awal Rajab',          '🌙'],
+[8, 1,  'Awal Syaban',         '🌙'],
+[9, 10, '10 Ramadan',          '📖'],
+[9, 20, 'Malam Iktikaf',       '🕌'],
+[10, 8, 'Puasa Syawal',        '🌙'],
+[12, 8, 'Tarwiyah',            '🕋'],
+[12, 13, 'Hari Tasyrik 3',     '🐄'],
+
     ];
 
     // Coba konversi untuk tahun ini dan tahun depan
