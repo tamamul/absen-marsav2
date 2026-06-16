@@ -655,7 +655,7 @@ Widget _buildTanggalCard() {
               const SizedBox(height: 8),
               Row(
                 children: [
-                  const Icon(Icons.event_upcoming,
+                  const Icon(Icons.event,
                       color: Colors.white70, size: 14),
                   const SizedBox(width: 6),
                   Expanded(
