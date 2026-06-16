@@ -634,7 +634,7 @@ class _KalenderScreenState extends State<KalenderScreen> {
               gridDelegate:
                   const SliverGridDelegateWithFixedCrossAxisCount(
                 crossAxisCount: 7,
-                childAspectRatio: 1,
+                childAspectRatio: 0.75,
               ),
               itemCount: _buildGrid().length,
               itemBuilder: (_, i) {
@@ -672,7 +672,7 @@ class _KalenderScreenState extends State<KalenderScreen> {
                               child: Text('${_hariDipilih.day}',
                                   style: const TextStyle(
                                       color: Colors.white,
-                                      fontSize: 26,
+                                      fontSize: 36,
                                       fontWeight: FontWeight.bold)),
                             ),
                           ),
@@ -776,65 +776,70 @@ class _KalenderScreenState extends State<KalenderScreen> {
   }
 
   Widget _buildTanggal(DateTime dt) {
-    final nasional  = _getNasionalTanggal(dt);
-    final custom    = _getCustomTanggal(dt);
-    final privat    = custom.where((h) => !h.isPublik).toList();
-    final publik    = custom.where((h) => h.isPublik).toList();
-    final isHariIni = _isHariIni(dt);
-    final isDipilih = _isDipilih(dt);
-    final isMinggu  = dt.weekday == 7;
-    final isLibur   = nasional.isNotEmpty;
+  final nasional  = _getNasionalTanggal(dt);
+  final custom    = _getCustomTanggal(dt);
+  final privat    = custom.where((h) => !h.isPublik).toList();
+  final publik    = custom.where((h) => h.isPublik).toList();
+  final isHariIni = _isHariIni(dt);
+  final isDipilih = _isDipilih(dt);
+  final isMinggu  = dt.weekday == 7;
+  final isLibur   = nasional.isNotEmpty;
+  final pasaran   = HariBesarHelper.hariPasaran(dt);
 
-    return GestureDetector(
-      onTap: () => setState(() => _hariDipilih = dt),
-      child: Container(
-        margin: const EdgeInsets.all(2),
-        decoration: BoxDecoration(
-          color: isDipilih
-              ? const Color(0xFF1B5E20)
-              : isHariIni
-                  ? const Color(0xFF1B5E20).withOpacity(0.12)
-                  : null,
-          shape: BoxShape.circle,
-        ),
-        child: Stack(
-          children: [
-            Center(
-              child: Text('${dt.day}',
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: isHariIni || isDipilih
-                        ? FontWeight.bold
-                        : FontWeight.normal,
-                    color: isDipilih
-                        ? Colors.white
-                        : isMinggu || isLibur
-                            ? Colors.red
-                            : Colors.black87,
-                  )),
-            ),
-            // Dots
-            if ((isLibur || privat.isNotEmpty || publik.isNotEmpty) &&
-                !isDipilih)
-              Positioned(
-                bottom: 3, left: 0, right: 0,
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    if (isLibur)
-                      _dot(Colors.red),
-                    if (privat.isNotEmpty)
-                      _dot(Colors.blue),
-                    if (publik.isNotEmpty)
-                      _dot(Colors.orange),
-                  ],
-                ),
-              ),
-          ],
-        ),
+  return GestureDetector(
+    onTap: () => setState(() => _hariDipilih = dt),
+    child: Container(
+      margin: const EdgeInsets.all(1),
+      decoration: BoxDecoration(
+        color: isDipilih
+            ? const Color(0xFF1B5E20)
+            : isHariIni
+                ? const Color(0xFF1B5E20).withOpacity(0.12)
+                : null,
+        borderRadius: BorderRadius.circular(8),
       ),
-    );
-  }
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          // Angka tanggal
+          Text('${dt.day}',
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: isHariIni || isDipilih
+                    ? FontWeight.bold
+                    : FontWeight.normal,
+                color: isDipilih
+                    ? Colors.white
+                    : isMinggu || isLibur
+                        ? Colors.red
+                        : Colors.black87,
+              )),
+          // Nama pasaran
+          Text(
+            pasaran.substring(0, 3), // Singkat: Man, Pah, Pon, Wag, Kli
+            style: TextStyle(
+              fontSize: 7,
+              color: isDipilih
+                  ? Colors.white70
+                  : Colors.grey[500],
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+          // Dots event
+          if ((isLibur || privat.isNotEmpty || publik.isNotEmpty))
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                if (isLibur)    _dot(isDipilih ? Colors.white : Colors.red),
+                if (privat.isNotEmpty) _dot(isDipilih ? Colors.white70 : Colors.blue),
+                if (publik.isNotEmpty) _dot(isDipilih ? Colors.white70 : Colors.orange),
+              ],
+            ),
+        ],
+      ),
+    ),
+  );
+}
 
   Widget _dot(Color color) => Container(
     width: 4, height: 4,
