@@ -34,6 +34,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   String _pesanLokasi = '';
   Position? _posisi;
   int _navIndex       = 0;
+  int? _myUserId;
   File? _fotoProfil;
   List<HariBesar>       _hariBesarHariIni  = [];
   List<HariBesarCustom> _customHariIni     = [];
@@ -78,8 +79,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
        _customMendatang = allCustom; // filter dilakukan di build
       setState(() {
         if (resPegawai['status'] == true) {
-          _pegawai = PegawaiModel.fromJson(resPegawai['data']);
-        }
+  _pegawai = PegawaiModel.fromJson(resPegawai['data']);
+
+  if (_pegawai != null) {
+    _myUserId = int.tryParse(_pegawai!.id);
+  }
+}
         if (resPresensi['status'] == true && resPresensi['data'] != null) {
           _presensi = PresensiModel.fromJson(resPresensi['data']);
         }
