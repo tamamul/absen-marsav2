@@ -7,6 +7,7 @@ import '../services/api_service.dart';
 import '../models/pegawai_model.dart';
 import '../models/presensi_model.dart';
 import '../helpers/hari_besar.dart';
+import '../helpers/hari_besar_custom.dart';
 import 'absen_screen.dart';
 import 'login_screen.dart';
 import 'riwayat_screen.dart';
@@ -15,7 +16,6 @@ import 'profil_screen.dart';
 import 'kalender_screen.dart';
 import 'absensi_siswa_screen.dart';
 import 'rekap_siswa_screen.dart';
-import 'pengumuman_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -34,6 +34,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Position? _posisi;
   int _navIndex       = 0;
   File? _fotoProfil;
+  List<HariBesar>       _hariBesarHariIni  = [];
+  List<HariBesarCustom> _customHariIni     = [];
 
   // Waktu realtime
   late DateTime _now;
@@ -67,6 +69,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
     try {
       final resPegawai  = await ApiService.getPegawaiProfil();
       final resPresensi = await ApiService.getAbsenHariIni();
+      // Load hari besar & custom hari ini
+      final now = DateTime.now();
+      _hariBesarHariIni = HariBesarHelper.getHariIni(now);
+      final allCustom   = await HariBesarCustomDb.getAll();
+      _customHariIni    = allCustom
+       .where((h) => h.cocokDengan(now))
+      .toList();      
       setState(() {
         if (resPegawai['status'] == true) {
           _pegawai = PegawaiModel.fromJson(resPegawai['data']);
@@ -502,161 +511,170 @@ _toolItem(
           );
   }
 
-  Widget _buildTanggalCard() {
-    final hijri      = HijriCalendar.fromDate(_now);
-    final hariBesar  = HariBesarHelper.getHariIni(_now);
-    final mendatang  = HariBesarHelper.getMendatang(_now, hari: 14);
+Widget _buildTanggalCard() {
+  final hijri     = HijriCalendar.fromDate(_now);
+  final hariBesar = HariBesarHelper.getHariIni(_now);
+  final mendatang = HariBesarHelper.getMendatang(_now, hari: 14);
 
-    return Card(
-      shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16)),
-      child: Container(
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(16),
-          gradient: const LinearGradient(
-            colors: [Color(0xFF1B5E20), Color(0xFF2E7D32)],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
+  // Gabung semua event hari ini
+  final eventHariIni = <Map<String, dynamic>>[];
+  for (final h in hariBesar) {
+    eventHariIni.add({
+      'nama':  h.nama,
+      'emoji': h.emoji ?? '📅',
+    });
+  }
+  for (final h in _customHariIni) {
+    eventHariIni.add({
+      'nama':  h.nama,
+      'emoji': h.emoji,
+    });
+  }
+
+  return Card(
+    shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16)),
+    child: Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(16),
+        gradient: const LinearGradient(
+          colors: [Color(0xFF1B5E20), Color(0xFF2E7D32)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
         ),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          HariBesarHelper.namaHari(_now),
-                          style: const TextStyle(
-                              color: Colors.white70,
-                              fontSize: 13),
-                        ),
-                        Text(
-                          '${_now.day} ${HariBesarHelper.namaBulan(_now.month)} ${_now.year}',
-                          style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 20,
-                              fontWeight: FontWeight.bold),
-                        ),
-                        Text(
-                          '${hijri.hDay} ${HariBesarHelper.namaBulanHijri(hijri.hMonth)} ${hijri.hYear} H',
-                          style: const TextStyle(
-                              color: Colors.white70,
-                              fontSize: 12),
-                        ),
-                      ],
-                    ),
-                  ),
-                  // Jam
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.end,
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        '${_now.hour.toString().padLeft(2, '0')}:${_now.minute.toString().padLeft(2, '0')}',
+                        HariBesarHelper.namaHari(_now),
+                        style: const TextStyle(
+                            color: Colors.white70, fontSize: 13),
+                      ),
+                      Text(
+                        '${_now.day} ${HariBesarHelper.namaBulan(_now.month)} ${_now.year}',
                         style: const TextStyle(
                             color: Colors.white,
-                            fontSize: 32,
+                            fontSize: 20,
                             fontWeight: FontWeight.bold),
                       ),
-                      GestureDetector(
-                        onTap: () => Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                              builder: (_) => const KalenderScreen()),
-                        ),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 10, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: Colors.white24,
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                          child: const Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(Icons.calendar_month,
-                                  color: Colors.white, size: 12),
-                              SizedBox(width: 4),
-                              Text('Kalender',
-                                  style: TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 11)),
-                            ],
-                          ),
-                        ),
+                      Text(
+                        '${hijri.hDay} ${HariBesarHelper.namaBulanHijri(hijri.hMonth)} ${hijri.hYear} H',
+                        style: const TextStyle(
+                            color: Colors.white70, fontSize: 12),
                       ),
                     ],
                   ),
-                ],
-              ),
-
-              // Hari besar hari ini
-              if (hariBesar.isNotEmpty) ...[
-                const SizedBox(height: 10),
-                const Divider(color: Colors.white24, height: 1),
-                const SizedBox(height: 10),
-                Wrap(
-                  spacing: 6,
-                  runSpacing: 6,
-                  children: hariBesar.map((h) => Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 10, vertical: 5),
-                    decoration: BoxDecoration(
-                      color: Colors.white24,
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(h.emoji ?? '📅',
-                            style: const TextStyle(fontSize: 14)),
-                        const SizedBox(width: 4),
-                        Text(h.nama,
-                            style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 12,
-                                fontWeight: FontWeight.bold)),
-                      ],
-                    ),
-                  )).toList(),
                 ),
-              ],
-
-              // Mendatang dalam 14 hari
-              if (mendatang.isNotEmpty && hariBesar.isEmpty) ...[
-                const SizedBox(height: 10),
-                const Divider(color: Colors.white24, height: 1),
-                const SizedBox(height: 8),
-                Row(
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
-                    const Icon(
-  Icons.event,
-  color: Colors.white70,
-  size: 14,
-),
-                    const SizedBox(width: 6),
-                    Expanded(
-                      child: Text(
-                        '${mendatang.first.emoji ?? ''} ${mendatang.first.nama} — ${mendatang.first.tanggal.difference(DateTime.now()).inDays} hari lagi',
-                        style: const TextStyle(
-                            color: Colors.white70, fontSize: 12),
-                        overflow: TextOverflow.ellipsis,
+                    Text(
+                      '${_now.hour.toString().padLeft(2, '0')}:${_now.minute.toString().padLeft(2, '0')}',
+                      style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 32,
+                          fontWeight: FontWeight.bold),
+                    ),
+                    GestureDetector(
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                            builder: (_) => const KalenderScreen()),
+                      ),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: Colors.white24,
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.calendar_month,
+                                color: Colors.white, size: 12),
+                            SizedBox(width: 4),
+                            Text('Kalender',
+                                style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 11)),
+                          ],
+                        ),
                       ),
                     ),
                   ],
                 ),
               ],
+            ),
+
+            // Event hari ini (nasional + custom)
+            if (eventHariIni.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              const Divider(color: Colors.white24, height: 1),
+              const SizedBox(height: 10),
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: eventHariIni.map((e) => Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 10, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: Colors.white24,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(e['emoji'] as String,
+                          style: const TextStyle(fontSize: 14)),
+                      const SizedBox(width: 4),
+                      Text(e['nama'] as String,
+                          style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold)),
+                    ],
+                  ),
+                )).toList(),
+              ),
             ],
-          ),
+
+            // Mendatang jika tidak ada event hari ini
+            if (eventHariIni.isEmpty && mendatang.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              const Divider(color: Colors.white24, height: 1),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  const Icon(Icons.event_upcoming,
+                      color: Colors.white70, size: 14),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      '${mendatang.first.emoji ?? ''} ${mendatang.first.nama} — ${mendatang.first.tanggal.difference(DateTime.now()).inDays} hari lagi',
+                      style: const TextStyle(
+                          color: Colors.white70, fontSize: 12),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ],
         ),
       ),
-    );
-  }
+    ),
+  );
+}
 
   Widget _buildProfileCard() {
     return Card(
