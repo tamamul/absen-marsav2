@@ -32,7 +32,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   bool? _didalam      = null;
   String _pesanLokasi = '';
   Position? _posisi;
-  int _navIndex       = 0;.
+  int _navIndex       = 0;
   File? _fotoProfil;
   List<dynamic> _pengumuman = [];
 
