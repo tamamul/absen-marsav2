@@ -16,6 +16,7 @@ import 'profil_screen.dart';
 import 'kalender_screen.dart';
 import 'absensi_siswa_screen.dart';
 import 'rekap_siswa_screen.dart';
+import 'pengumuman_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -36,6 +37,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   File? _fotoProfil;
   List<HariBesar>       _hariBesarHariIni  = [];
   List<HariBesarCustom> _customHariIni     = [];
+  List<HariBesarCustom> _customMendatang  = [];
 
   // Waktu realtime
   late DateTime _now;
@@ -70,12 +72,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
       final resPegawai  = await ApiService.getPegawaiProfil();
       final resPresensi = await ApiService.getAbsenHariIni();
       // Load hari besar & custom hari ini
-      final now = DateTime.now();
-      _hariBesarHariIni = HariBesarHelper.getHariIni(now);
-      final allCustom   = await HariBesarCustomDb.getAll();
-      _customHariIni    = allCustom
-       .where((h) => h.cocokDengan(now))
-      .toList();      
+      final now        = DateTime.now();
+      final allCustom  = await HariBesarCustomDb.getAll();
+       _customHariIni   = allCustom.where((h) => h.cocokDengan(now)).toList();
+       _customMendatang = allCustom; // filter dilakukan di build
       setState(() {
         if (resPegawai['status'] == true) {
           _pegawai = PegawaiModel.fromJson(resPegawai['data']);
@@ -90,6 +90,31 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
     await _validasiLokasi();
   }
+  
+  Future<void> _bukaDetailPublik(HariBesarCustom h) async {
+  if (h.serverId == null) return;
+  final res = await ApiService.getPengumuman(
+      filter: 'semua', limit: 100);
+  if (res['status'] == true) {
+    final list = res['data'] as List;
+    final data = list.firstWhere(
+      (e) => e['id'].toString() == h.serverId.toString(),
+      orElse: () => null,
+    );
+    if (data != null && mounted) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => DetailPengumumanScreen(
+            pengumuman: Pengumuman.fromJson(data),
+            myUserId:   _myUserId,
+            onDeleted:  _loadData,
+          ),
+        ),
+      );
+    }
+  }
+}
 
   Future<void> _validasiLokasi() async {
     setState(() {
@@ -128,6 +153,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       });
     }
   }
+  
 
   Future<void> _logout() async {
     await ApiService.clearToken();
@@ -514,22 +540,60 @@ _toolItem(
 Widget _buildTanggalCard() {
   final hijri     = HijriCalendar.fromDate(_now);
   final hariBesar = HariBesarHelper.getHariIni(_now);
-  final mendatang = HariBesarHelper.getMendatang(_now, hari: 14);
+  final mendatang = HariBesarHelper.getMendatang(_now, hari: 30);
 
-  // Gabung semua event hari ini
+  // Event hari ini: nasional + custom
   final eventHariIni = <Map<String, dynamic>>[];
   for (final h in hariBesar) {
     eventHariIni.add({
       'nama':  h.nama,
       'emoji': h.emoji ?? '📅',
+      'color': h.tipe == 'islam'
+          ? const Color(0xFF81C784)
+          : Colors.red[300],
+      'obj':   null,
+      'tipe':  h.tipe,
     });
   }
   for (final h in _customHariIni) {
     eventHariIni.add({
       'nama':  h.nama,
       'emoji': h.emoji,
+      'color': h.isPublik ? Colors.orange[300] : Colors.blue[300],
+      'obj':   h,
+      'tipe':  h.isPublik ? 'publik' : 'privat',
     });
   }
+
+  // Agenda mendatang: nasional + custom
+  final agendaMendatang = <Map<String, dynamic>>[];
+  for (final h in mendatang) {
+    agendaMendatang.add({
+      'tanggal': h.tanggal,
+      'nama':    h.nama,
+      'emoji':   h.emoji ?? '📅',
+      'tipe':    h.tipe,
+      'obj':     null,
+    });
+  }
+  for (final h in _customMendatang) {
+    final dt = DateTime(
+      h.tahunan ? _now.year : h.tanggalYear,
+      h.tanggalMonth, h.tanggalDay,
+    );
+    if (dt.isAfter(_now) &&
+        dt.isBefore(_now.add(const Duration(days: 30)))) {
+      agendaMendatang.add({
+        'tanggal': dt,
+        'nama':    h.nama,
+        'emoji':   h.emoji,
+        'tipe':    h.isPublik ? 'publik' : 'privat',
+        'obj':     h,
+      });
+    }
+  }
+  agendaMendatang.sort((a, b) =>
+      (a['tanggal'] as DateTime).compareTo(b['tanggal'] as DateTime));
 
   return Card(
     shape: RoundedRectangleBorder(
@@ -543,12 +607,13 @@ Widget _buildTanggalCard() {
           end: Alignment.bottomRight,
         ),
       ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // ── Header tanggal & jam ──────────────────────────
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
               children: [
                 Expanded(
                   child: Column(
@@ -615,62 +680,207 @@ Widget _buildTanggalCard() {
                 ),
               ],
             ),
+          ),
 
-            // Event hari ini (nasional + custom)
-            if (eventHariIni.isNotEmpty) ...[
-              const SizedBox(height: 10),
-              const Divider(color: Colors.white24, height: 1),
-              const SizedBox(height: 10),
-              Wrap(
+          // ── Event hari ini ────────────────────────────────
+          if (eventHariIni.isNotEmpty) ...[
+            const Divider(color: Colors.white24, height: 1),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 10, 16, 4),
+              child: const Text('Hari Ini',
+                  style: TextStyle(
+                      color: Colors.white70,
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: 1)),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+              child: Wrap(
                 spacing: 6,
                 runSpacing: 6,
-                children: eventHariIni.map((e) => Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 10, vertical: 5),
-                  decoration: BoxDecoration(
-                    color: Colors.white24,
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(e['emoji'] as String,
-                          style: const TextStyle(fontSize: 14)),
-                      const SizedBox(width: 4),
-                      Text(e['nama'] as String,
-                          style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 12,
-                              fontWeight: FontWeight.bold)),
-                    ],
-                  ),
-                )).toList(),
-              ),
-            ],
-
-            // Mendatang jika tidak ada event hari ini
-            if (eventHariIni.isEmpty && mendatang.isNotEmpty) ...[
-              const SizedBox(height: 10),
-              const Divider(color: Colors.white24, height: 1),
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  const Icon(Icons.event,
-                      color: Colors.white70, size: 14),
-                  const SizedBox(width: 6),
-                  Expanded(
-                    child: Text(
-                      '${mendatang.first.emoji ?? ''} ${mendatang.first.nama} — ${mendatang.first.tanggal.difference(DateTime.now()).inDays} hari lagi',
-                      style: const TextStyle(
-                          color: Colors.white70, fontSize: 12),
-                      overflow: TextOverflow.ellipsis,
+                children: eventHariIni.map((e) {
+                  final color = e['color'] as Color? ?? Colors.white;
+                  return GestureDetector(
+                    onTap: () {
+                      if (e['tipe'] == 'publik' && e['obj'] != null) {
+                        _bukaDetailPublik(e['obj'] as HariBesarCustom);
+                      } else {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                              builder: (_) => const KalenderScreen()),
+                        );
+                      }
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 5),
+                      decoration: BoxDecoration(
+                        color: Colors.white24,
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(
+                            color: color.withOpacity(0.5), width: 1),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(e['emoji'] as String,
+                              style: const TextStyle(fontSize: 13)),
+                          const SizedBox(width: 4),
+                          Text(e['nama'] as String,
+                              style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold)),
+                        ],
+                      ),
                     ),
+                  );
+                }).toList(),
+              ),
+            ),
+          ],
+
+          // ── Agenda mendatang (scrollable) ─────────────────
+          if (agendaMendatang.isNotEmpty) ...[
+            const Divider(color: Colors.white24, height: 1),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 10, 16, 6),
+              child: Row(
+                children: [
+                  const Text('Agenda Mendatang',
+                      style: TextStyle(
+                          color: Colors.white70,
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                          letterSpacing: 1)),
+                  const Spacer(),
+                  GestureDetector(
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                          builder: (_) => const KalenderScreen()),
+                    ),
+                    child: const Text('Lihat kalender',
+                        style: TextStyle(
+                            color: Colors.white54, fontSize: 10)),
                   ),
                 ],
               ),
-            ],
+            ),
+            SizedBox(
+              height: 80,
+              child: ListView.builder(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                itemCount: agendaMendatang.length,
+                itemBuilder: (_, i) {
+                  final e       = agendaMendatang[i];
+                  final dt      = e['tanggal'] as DateTime;
+                  final selisih = dt.difference(_now).inDays;
+                  final tipe    = e['tipe'] as String;
+                  final color   = tipe == 'publik'
+                      ? Colors.orange
+                      : tipe == 'privat'
+                          ? Colors.blue[300]!
+                          : tipe == 'islam'
+                              ? const Color(0xFF81C784)
+                              : Colors.red[300]!;
+
+                  return GestureDetector(
+                    onTap: () {
+                      if (tipe == 'publik' && e['obj'] != null) {
+                        _bukaDetailPublik(
+                            e['obj'] as HariBesarCustom);
+                      } else {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                              builder: (_) => const KalenderScreen()),
+                        );
+                      }
+                    },
+                    child: Container(
+                      width: 90,
+                      margin: const EdgeInsets.only(right: 8),
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.white12,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                            color: color.withOpacity(0.4), width: 1),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Row(
+                            children: [
+                              Text(e['emoji'] as String,
+                                  style: const TextStyle(fontSize: 14)),
+                              const Spacer(),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 4, vertical: 1),
+                                decoration: BoxDecoration(
+                                  color: selisih <= 3
+                                      ? Colors.red.withOpacity(0.3)
+                                      : Colors.white12,
+                                  borderRadius:
+                                      BorderRadius.circular(6),
+                                ),
+                                child: Text(
+                                  '${selisih}h',
+                                  style: TextStyle(
+                                      fontSize: 9,
+                                      color: selisih <= 3
+                                          ? Colors.red[200]
+                                          : Colors.white54,
+                                      fontWeight: FontWeight.bold),
+                                ),
+                              ),
+                            ],
+                          ),
+                          Text(
+                            e['nama'] as String,
+                            style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w500),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          Text(
+                            '${dt.day} ${HariBesarHelper.namaBulan(dt.month).substring(0, 3)}',
+                            style: const TextStyle(
+                                color: Colors.white54, fontSize: 10),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
           ],
-        ),
+
+          // Jika tidak ada event sama sekali
+          if (eventHariIni.isEmpty && agendaMendatang.isEmpty)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+              child: Row(
+                children: [
+                  const Icon(Icons.event_available,
+                      color: Colors.white54, size: 14),
+                  const SizedBox(width: 6),
+                  const Text('Tidak ada agenda mendatang',
+                      style: TextStyle(
+                          color: Colors.white54, fontSize: 12)),
+                ],
+              ),
+            ),
+        ],
       ),
     ),
   );
