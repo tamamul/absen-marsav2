@@ -142,6 +142,25 @@ class HariBesarHelper {
     return bulan0[bulan];
   }
 
+// ── Hari Pasaran Jawa ────────────────────────────────────────
+static const List<String> _pasaran = [
+  'Pahing', 'Pon', 'Wage', 'Kliwon', 'Manis',
+];
+
+static String hariPasaran(DateTime dt) {
+  // Epoch 1 Januari 1970 = Wage (index 3)
+  // Siklus 5 hari
+  final epoch    = DateTime(1970, 1, 1);
+  final selisih  = dt.difference(epoch).inDays;
+  final index    = (selisih + 3) % 5; // +3 karena 1 Jan 1970 = Wage
+  return _pasaran[index];
+}
+
+static String hariLengkap(DateTime dt) {
+  return '${namaHari(dt)} ${hariPasaran(dt)}';
+}
+
+
   // ── Konversi ke Hijriah ──────────────────────────────────────
   static String toHijriah(DateTime dt) {
     try {
