@@ -34,7 +34,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Position? _posisi;
   int _navIndex       = 0;
   File? _fotoProfil;
-  List<dynamic> _pengumuman = [];
 
   // Waktu realtime
   late DateTime _now;
@@ -103,12 +102,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
         });
         return;
       }
-      final resPengumuman = await ApiService.getPengumuman(
-    filter: 'mendatang', limit: 3);
-if (resPengumuman['status'] == true) {
-  _pengumuman = resPengumuman['data'] ?? [];
-}
-      
       final pos = await Geolocator.getCurrentPosition(
           desiredAccuracy: LocationAccuracy.high);
       _posisi = pos;
@@ -272,20 +265,6 @@ _toolItem(
       context,
       MaterialPageRoute(
           builder: (_) => const RekapSiswaScreen()),
-    );
-  },
-),
-
-_toolItem(
-  icon: Icons.campaign,
-  label: 'Pengumuman',
-  color: Colors.teal,
-  onTap: () {
-    Navigator.pop(context);
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-          builder: (_) => const PengumumanScreen()),
     );
   },
 ),
@@ -515,8 +494,6 @@ _toolItem(
                   const SizedBox(height: 12),
                   _buildStatusCard(),
                   const SizedBox(height: 12),
-                  _buildPengumumanCard(),
-                  const SizedBox(height: 12),
                   _buildAbsenButtons(),
                   const SizedBox(height: 24),
                 ],
@@ -680,7 +657,7 @@ _toolItem(
       ),
     );
   }
-  
+
   Widget _buildProfileCard() {
     return Card(
       shape: RoundedRectangleBorder(
@@ -732,111 +709,6 @@ _toolItem(
       ),
     );
   }
-  
-  Widget _buildPengumumanCard() {
-  if (_pengumuman.isEmpty) return const SizedBox();
-  return Card(
-    shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16)),
-    child: Padding(
-      padding: const EdgeInsets.all(14),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Text('📢 Pengumuman',
-                  style: TextStyle(
-                      fontWeight: FontWeight.bold, fontSize: 15)),
-              const Spacer(),
-              GestureDetector(
-                onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                      builder: (_) => const PengumumanScreen()),
-                ),
-                child: const Text('Lihat semua',
-                    style: TextStyle(
-                        color: Color(0xFF1B5E20),
-                        fontSize: 12)),
-              ),
-            ],
-          ),
-          const Divider(height: 16),
-          ..._pengumuman.take(3).map((p) {
-            final selisih = p['tanggal_event'] != null
-                ? DateTime.tryParse(p['tanggal_event'])
-                    ?.difference(DateTime.now())
-                    .inDays
-                : null;
-            return GestureDetector(
-              onTap: () => Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => DetailPengumumanScreen(
-                    pengumuman: Pengumuman.fromJson(p),
-                    myUserId: _myUserId,
-                    onDeleted:  _loadData,
-                  ),
-                ),
-              ),
-              child: Padding(
-                padding: const EdgeInsets.only(bottom: 10),
-                child: Row(
-                  children: [
-                    Text(p['emoji'] ?? '📢',
-                        style: const TextStyle(fontSize: 20)),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(p['judul'] ?? '',
-                              style: const TextStyle(
-                                  fontWeight: FontWeight.w500,
-                                  fontSize: 13),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis),
-                          Text(p['nama_pembuat'] ?? '',
-                              style: const TextStyle(
-                                  fontSize: 11,
-                                  color: Colors.grey)),
-                        ],
-                      ),
-                    ),
-                    if (selisih != null)
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 6, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: selisih <= 3
-                              ? Colors.red.withOpacity(0.1)
-                              : const Color(0xFF1B5E20)
-                                  .withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Text(
-                          selisih == 0
-                              ? 'Hari ini'
-                              : '$selisih hr',
-                          style: TextStyle(
-                              fontSize: 10,
-                              fontWeight: FontWeight.bold,
-                              color: selisih <= 3
-                                  ? Colors.red
-                                  : const Color(0xFF1B5E20)),
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-            );
-          }),
-        ],
-      ),
-    ),
-  );
-}
 
   Widget _buildLokasiCard() {
     Color color;
