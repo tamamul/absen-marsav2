@@ -83,13 +83,13 @@ class _AbsenScreenState extends State<AbsenScreen> {
 
       _cam = CameraController(
         cam,
-        ResolutionPreset.high,  // ✅ Upgrade ke HIGH untuk kualitas lebih baik
+        ResolutionPreset.medium,  // ✅ Upgrade ke HIGH untuk kualitas lebih baik
         enableAudio: false,
         imageFormatGroup: Platform.isAndroid 
             ? ImageFormatGroup.nv21 
             : ImageFormatGroup.bgra8888,
       );
-      
+
       await _cam!.initialize();
       if (!mounted) return;
 
@@ -97,7 +97,7 @@ class _AbsenScreenState extends State<AbsenScreen> {
         _loading = false;
         _fase = 'siap';
       });
-      
+
       _setInstruksi();
       _cam!.startImageStream(_onFrame);
     } catch (e) {
@@ -179,7 +179,7 @@ class _AbsenScreenState extends State<AbsenScreen> {
 
       if (faces.isEmpty) {
         setState(() {
-          _instruksi = 'Wajah tidak terdeteksi, coba sesuaikan posisi (${_detectionFailCount}s)';
+          _instruksi = 'Wajah tidak terdeteksi, coba sesuaikan posisi (${_detectionFailCount}x)';
           if (_fase == 'challenge' && _senyumFrames > 0) {
             _senyumFrames = max(0, _senyumFrames - 1);
           } else if (_fase == 'challenge' && _detectionFailCount > 3) {
@@ -308,7 +308,7 @@ class _AbsenScreenState extends State<AbsenScreen> {
 
       await _cam!.stopImageStream();
       await Future.delayed(const Duration(milliseconds: 600));
-      
+
       final file = await _cam!.takePicture();
       if (!mounted) return;
 
@@ -340,39 +340,125 @@ class _AbsenScreenState extends State<AbsenScreen> {
   }
 
   Future<void> _kirimAbsen() async {
-    if (_foto == null) return;
-    setState(() { _mengirim = true; _pesan = ''; });
+  if (_foto == null) return;
+  setState(() { _mengirim = true; _pesan = ''; });
 
-    final lat = widget.posisi?.latitude  ?? 0.0;
-    final lng = widget.posisi?.longitude ?? 0.0;
+  final lat = widget.posisi?.latitude  ?? 0.0;
+  final lng = widget.posisi?.longitude ?? 0.0;
 
-    try {
-      final res = widget.tipe == 'masuk'
-          ? await ApiService.absenMasuk(lat, lng, fotoFile: _foto)
-          : await ApiService.absenKeluar(lat, lng, fotoFile: _foto);
+  final res = widget.tipe == 'masuk'
+      ? await ApiService.absenMasuk(lat, lng, fotoFile: _foto)
+      : await ApiService.absenKeluar(lat, lng, fotoFile: _foto);
 
+  if (!mounted) return;
+
+setState(() {
+  _mengirim = false;
+});
+
+  if (res['status'] == true) {
+    final warning      = res['warning'];
+    final terlambat    = res['terlambat'] == true;
+    final menitTerlambat = res['menit_terlambat'] ?? 0;
+
+    // Tampil snackbar sukses
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(res['message'] ?? 'Absen berhasil'),
+      backgroundColor: terlambat ? Colors.orange : Colors.green,
+      duration: const Duration(seconds: 3),
+    ));
+
+    // Jika ada warning (pulang lebih awal mode santai)
+    if (warning != null) {
+      await Future.delayed(const Duration(milliseconds: 500));
       if (!mounted) return;
-      setState(() => _mengirim = false);
+      showDialog(
+        context: context,
+        builder: (_) => AlertDialog(
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16)),
+          title: const Row(
+            children: [
+              Icon(Icons.warning_amber, color: Colors.orange),
+              SizedBox(width: 8),
+              Text('Perhatian'),
+            ],
+          ),
+          content: Text(warning.toString()),
+          actions: [
+            ElevatedButton(
+              onPressed: () {
+                Navigator.pop(context);
+                Navigator.pop(context, true);
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF1B5E20),
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8)),
+              ),
+              child: const Text('OK'),
+            ),
+          ],
+        ),
+      );
+    } else {
+      Navigator.pop(context, true);
+    }
+  } else {
+    // Error — cek apakah pesan blokir jam
+    String errMsg = 'Absen gagal';
 
-      if (res['status'] == true) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(res['message'] ?? 'Absen berhasil'),
-          backgroundColor: Colors.green,
-        ));
-        Navigator.pop(context, true);
-      } else {
-        setState(() {
-          _pesan = res['messages']?['error'] ??
-              res['message'] ?? 'Absen gagal';
-        });
-        _ulangi();
-      }
-    } catch (e) {
-      if (!mounted) return;
-      setState(() { _mengirim = false; _pesan = 'Error: $e'; });
+if (res['messages'] is Map &&
+    res['messages']['error'] != null) {
+  errMsg = res['messages']['error'].toString();
+} else if (res['message'] != null) {
+  errMsg = res['message'].toString();
+}
+
+    // Tampil dialog untuk error penting
+    final isPenting = errMsg.contains('belum dibuka') ||
+        errMsg.contains('Belum waktunya') ||
+        errMsg.contains('luar area');
+
+    if (isPenting) {
+      showDialog(
+        context: context,
+        builder: (_) => AlertDialog(
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16)),
+          title: const Row(
+            children: [
+              Icon(Icons.block, color: Colors.red),
+              SizedBox(width: 8),
+              Text('Tidak Dapat Absen'),
+            ],
+          ),
+          content: Text(errMsg),
+          actions: [
+            ElevatedButton(
+              onPressed: () => Navigator.pop(context),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8)),
+              ),
+              child: const Text('Tutup'),
+            ),
+          ],
+        ),
+      );
+      _ulangi();
+    } else {
+      setState(() {
+        _foto  = null;
+        _pesan = errMsg;
+      });
       _ulangi();
     }
   }
+}
 
   void _ulangi() {
     _timer?.cancel();
@@ -392,12 +478,17 @@ class _AbsenScreenState extends State<AbsenScreen> {
       _setInstruksi();
     });
 
-    _cam?.startImageStream(_onFrame);
-  }
+    if (_cam != null &&
+    _cam!.value.isInitialized &&
+    !_cam!.value.isStreamingImages) {
+  await _cam!.startImageStream(_onFrame);
+}
 
   InputImage? _toInputImage(CameraImage img) {
     try {
-      final cam      = _cam!.description;
+      if (_cam == null) return null;
+
+final cam = _cam!.description;
       final rotation = InputImageRotationValue.fromRawValue(
               cam.sensorOrientation) ??
           InputImageRotation.rotation0deg;
@@ -454,7 +545,9 @@ class _AbsenScreenState extends State<AbsenScreen> {
       body: _loading
           ? const Center(
               child: CircularProgressIndicator(color: Colors.white))
-          : _pesan.isNotEmpty && _foto == null && _fase == 'init'
+          : _pesan.isNotEmpty &&
+_foto == null &&
+!_loading'
               ? _buildError()
               : _foto != null && !_mengirim && _pesan.isEmpty
                   ? _buildKonfirmasi(color, label)
@@ -530,7 +623,7 @@ class _AbsenScreenState extends State<AbsenScreen> {
           ),
           const SizedBox(height: 20),
           _buildProgress(color),
-          
+
           if (_pesan.isNotEmpty)
             Padding(
               padding: const EdgeInsets.only(top: 16, left: 20, right: 20),
