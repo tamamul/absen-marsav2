@@ -634,7 +634,7 @@ class _KalenderScreenState extends State<KalenderScreen> {
               gridDelegate:
                   const SliverGridDelegateWithFixedCrossAxisCount(
                 crossAxisCount: 7,
-                childAspectRatio: 0.75,
+                childAspectRatio: 0.60,
               ),
               itemCount: _buildGrid().length,
               itemBuilder: (_, i) {
@@ -804,7 +804,7 @@ class _KalenderScreenState extends State<KalenderScreen> {
           // Angka tanggal
           Text('${dt.day}',
               style: TextStyle(
-                fontSize: 14,
+                fontSize: 22,
                 fontWeight: isHariIni || isDipilih
                     ? FontWeight.bold
                     : FontWeight.normal,
@@ -818,7 +818,7 @@ class _KalenderScreenState extends State<KalenderScreen> {
           Text(
             pasaran.substring(0, 3), // Singkat: Man, Pah, Pon, Wag, Kli
             style: TextStyle(
-              fontSize: 7,
+              fontSize: 12,
               color: isDipilih
                   ? Colors.white70
                   : Colors.grey[500],
