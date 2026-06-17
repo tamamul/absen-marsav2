@@ -179,7 +179,7 @@ class _AbsenScreenState extends State<AbsenScreen> {
 
       if (faces.isEmpty) {
         setState(() {
-          _instruksi = 'Wajah tidak terdeteksi, coba sesuaikan posisi (${_detectionFailCount}x)';
+          _instruksi = 'Wajah tidak terdeteksi, coba sesuaikan posisi (${_detectionFailCount}s)';
           if (_fase == 'challenge' && _senyumFrames > 0) {
             _senyumFrames = max(0, _senyumFrames - 1);
           } else if (_fase == 'challenge' && _detectionFailCount > 3) {
@@ -350,11 +350,8 @@ class _AbsenScreenState extends State<AbsenScreen> {
       ? await ApiService.absenMasuk(lat, lng, fotoFile: _foto)
       : await ApiService.absenKeluar(lat, lng, fotoFile: _foto);
 
+  setState(() => _mengirim = false);
   if (!mounted) return;
-
-setState(() {
-  _mengirim = false;
-});
 
   if (res['status'] == true) {
     final warning      = res['warning'];
@@ -407,14 +404,8 @@ setState(() {
     }
   } else {
     // Error — cek apakah pesan blokir jam
-    String errMsg = 'Absen gagal';
-
-if (res['messages'] is Map &&
-    res['messages']['error'] != null) {
-  errMsg = res['messages']['error'].toString();
-} else if (res['message'] != null) {
-  errMsg = res['message'].toString();
-}
+    final errMsg = res['messages']?['error'] ??
+        res['message'] ?? 'Absen gagal';
 
     // Tampil dialog untuk error penting
     final isPenting = errMsg.contains('belum dibuka') ||
@@ -460,7 +451,7 @@ if (res['messages'] is Map &&
   }
 }
 
-  Future<void> _ulangi() async
+  void _ulangi() {
     _timer?.cancel();
     _challenge = Random().nextBool() ? 'blink' : 'smile';
 
@@ -478,17 +469,12 @@ if (res['messages'] is Map &&
       _setInstruksi();
     });
 
-    if (_cam != null &&
-    _cam!.value.isInitialized &&
-    !_cam!.value.isStreamingImages) {
-  await _cam!.startImageStream(_onFrame);
-}
-}
+    _cam?.startImageStream(_onFrame);
+  }
+
   InputImage? _toInputImage(CameraImage img) {
     try {
-      if (_cam == null) return null;
-
-final cam = _cam!.description;
+      final cam      = _cam!.description;
       final rotation = InputImageRotationValue.fromRawValue(
               cam.sensorOrientation) ??
           InputImageRotation.rotation0deg;
@@ -545,9 +531,7 @@ final cam = _cam!.description;
       body: _loading
           ? const Center(
               child: CircularProgressIndicator(color: Colors.white))
-          : _pesan.isNotEmpty &&
-_foto == null &&
-!_loading
+          : _pesan.isNotEmpty && _foto == null && _fase == 'init'
               ? _buildError()
               : _foto != null && !_mengirim && _pesan.isEmpty
                   ? _buildKonfirmasi(color, label)
