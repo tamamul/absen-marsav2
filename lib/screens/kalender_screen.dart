@@ -627,14 +627,14 @@ class _KalenderScreenState extends State<KalenderScreen> {
           Container(
             color: Colors.white,
             padding: const EdgeInsets.symmetric(
-                horizontal: 8, vertical: 4),
+                horizontal: 2, vertical: 0),
             child: GridView.builder(
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
               gridDelegate:
                   const SliverGridDelegateWithFixedCrossAxisCount(
                 crossAxisCount: 7,
-                childAspectRatio: 0.60,
+                childAspectRatio: 1.1,
               ),
               itemCount: _buildGrid().length,
               itemBuilder: (_, i) {
