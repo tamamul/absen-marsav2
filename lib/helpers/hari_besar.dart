@@ -163,15 +163,15 @@ HariBesar(nama: 'Hari Korpri', tanggal: DateTime(tahun, 11, 29), tipe: 'nasional
   }
 
   static String namaBulanHijri(int bulan) {
-    const bulan0 = ['','Muharram','Safar','Rabiul Awal','Rabiul Akhir',
-                    'Jumadil Awal','Jumadil Akhir','Rajab','Syaban',
-                    'Ramadan','Syawal','Dzulqadah','Dzulhijjah'];
+    const bulan0 = ['','Muharrom','Safar','Robiul Awal','Robiul Akhir',
+                    'Jumadil Awal','Jumadil Akhir','Rojab','Syaban',
+                    'Ramadan','Syawal','Dzulqodah','Dzulhijjah'];
     return bulan0[bulan];
   }
 
 // ── Hari Pasaran Jawa ────────────────────────────────────────
 static const List<String> _pasaran = [
-  'Pahing', 'Pon', 'Wage', 'Kliwon', 'Manis',
+  'Manis', 'Pahing', 'Pon', 'Wage', 'Kliwon', 
 ];
 
 static String hariPasaran(DateTime dt) {
