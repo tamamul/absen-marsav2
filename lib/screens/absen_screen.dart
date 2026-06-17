@@ -460,7 +460,7 @@ if (res['messages'] is Map &&
   }
 }
 
-  void _ulangi() {
+  Future<void> _ulangi() async
     _timer?.cancel();
     _challenge = Random().nextBool() ? 'blink' : 'smile';
 
@@ -483,7 +483,7 @@ if (res['messages'] is Map &&
     !_cam!.value.isStreamingImages) {
   await _cam!.startImageStream(_onFrame);
 }
-
+}
   InputImage? _toInputImage(CameraImage img) {
     try {
       if (_cam == null) return null;
@@ -547,7 +547,7 @@ final cam = _cam!.description;
               child: CircularProgressIndicator(color: Colors.white))
           : _pesan.isNotEmpty &&
 _foto == null &&
-!_loading'
+!_loading
               ? _buildError()
               : _foto != null && !_mengirim && _pesan.isEmpty
                   ? _buildKonfirmasi(color, label)
