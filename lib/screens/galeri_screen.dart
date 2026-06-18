@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart' as p;
 import '../services/api_service.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 
 
 
@@ -16,44 +17,58 @@ class _GaleriCache {
 
   static Future<Database> _init() async {
     final path = p.join(await getDatabasesPath(), 'galeri_cache.db');
-    return openDatabase(path, version: 1, onCreate: (db, _) async {
-      await db.execute('''
-        CREATE TABLE galeri (
-          id TEXT PRIMARY KEY,
-          tanggal TEXT,
-          nama TEXT,
-          jabatan TEXT,
-          jam_masuk TEXT,
-          jam_keluar TEXT,
-          foto_masuk TEXT,
-          foto_keluar TEXT,
-          cached_at INTEGER
-        )
-      ''');
-    });
+    return openDatabase(path, version: 2,
+      onCreate: (db, _) async {
+        await db.execute('''
+          CREATE TABLE galeri (
+            id           TEXT PRIMARY KEY,
+            tanggal      TEXT,
+            nama         TEXT,
+            jabatan      TEXT,
+            jam_masuk    TEXT,
+            jam_keluar   TEXT,
+            foto_masuk   TEXT,
+            foto_keluar  TEXT,
+            cached_at    INTEGER
+          )
+        ''');
+      },
+      onUpgrade: (db, oldV, newV) async {
+        // Tidak ada perubahan struktur, tetap kompatibel
+      },
+    );
   }
 
-  static Future<void> save(
+  // Simpan hanya data yang belum ada
+  static Future<int> saveNew(
       String tanggal, List<Map<String, dynamic>> list) async {
     final database = await db;
+    int newCount   = 0;
     final batch    = database.batch();
     final now      = DateTime.now().millisecondsSinceEpoch;
-    // Hapus data tanggal ini dulu
-    await database.delete('galeri', where: 'tanggal = ?', whereArgs: [tanggal]);
+
     for (final item in list) {
-      batch.insert('galeri', {
-        'id':          item['id']?.toString() ?? '',
-        'tanggal':     tanggal,
-        'nama':        item['nama'] ?? '',
-        'jabatan':     item['jabatan'] ?? '',
-        'jam_masuk':   item['jam_masuk'] ?? '',
-        'jam_keluar':  item['jam_keluar'] ?? '',
-        'foto_masuk':  item['foto_masuk'] ?? '',
-        'foto_keluar': item['foto_keluar'] ?? '',
-        'cached_at':   now,
-      });
+      final id = item['id']?.toString() ?? '';
+      // Cek apakah sudah ada
+      final existing = await database.query('galeri',
+          where: 'id = ?', whereArgs: [id]);
+      if (existing.isEmpty) {
+        batch.insert('galeri', {
+          'id':         id,
+          'tanggal':    tanggal,
+          'nama':       item['nama']        ?? '',
+          'jabatan':    item['jabatan']     ?? '',
+          'jam_masuk':  item['jam_masuk']   ?? '',
+          'jam_keluar': item['jam_keluar']  ?? '',
+          'foto_masuk': item['foto_masuk']  ?? '',
+          'foto_keluar':item['foto_keluar'] ?? '',
+          'cached_at':  now,
+        });
+        newCount++;
+      }
     }
     await batch.commit(noResult: true);
+    return newCount;
   }
 
   static Future<List<Map<String, dynamic>>> get(String tanggal) async {
@@ -92,8 +107,15 @@ class _GaleriCache {
 
   static Future<int> totalRows() async {
     final database = await db;
+    final r = await database
+        .rawQuery('SELECT COUNT(*) as c FROM galeri');
+    return r.first['c'] as int;
+  }
+
+  static Future<int> totalDates() async {
+    final database = await db;
     final r = await database.rawQuery(
-        'SELECT COUNT(*) as c FROM galeri');
+        'SELECT COUNT(DISTINCT tanggal) as c FROM galeri');
     return r.first['c'] as int;
   }
 }
@@ -135,35 +157,80 @@ class _GaleriScreenState extends State<GaleriScreen> {
   }
 
   Future<void> _loadData({bool forceRefresh = false}) async {
-    setState(() { _loading = true; _fromCache = false; });
-    final tanggal = _fmt(_tanggal);
+  setState(() { _loading = true; _fromCache = false; });
+  final tanggal = _fmt(_tanggal);
 
-    if (!forceRefresh && await _GaleriCache.hasCache(tanggal)) {
-      final cached = await _GaleriCache.get(tanggal);
-      _lastCached  = await _GaleriCache.lastCached(tanggal);
-      setState(() {
-        _data      = List<Map<String, dynamic>>.from(cached);
-        _loading   = false;
-        _fromCache = true;
-      });
+  // 1. Tampil dari cache dulu (cepat)
+  if (await _GaleriCache.hasCache(tanggal)) {
+    final cached = await _GaleriCache.get(tanggal);
+    _lastCached  = await _GaleriCache.lastCached(tanggal);
+    setState(() {
+      _data      = List<Map<String, dynamic>>.from(cached);
+      _loading   = false;
+      _fromCache = true;
+    });
+    // 2. Background: cek server untuk data baru
+    if (!forceRefresh) {
+      _syncBackground(tanggal);
       return;
     }
+  }
 
-    // Fetch dari server
+  // 3. Fetch dari server (pertama kali atau force refresh)
+  await _fetchServer(tanggal, clear: forceRefresh);
+}
+
+Future<void> _syncBackground(String tanggal) async {
+  try {
     final res = await ApiService.getGaleriHadir(tanggal: tanggal);
     if (res['status'] == true) {
-      final list = List<Map<String, dynamic>>.from(res['data'] ?? []);
-      await _GaleriCache.save(tanggal, list);
+      final list     = List<Map<String, dynamic>>.from(
+          res['data'] ?? []);
+      final newCount = await _GaleriCache.saveNew(tanggal, list);
+      if (newCount > 0) {
+        // Ada data baru → update tampilan
+        final cached = await _GaleriCache.get(tanggal);
+        _lastCached  = DateTime.now();
+        if (mounted) {
+          setState(() {
+            _data      = List<Map<String, dynamic>>.from(cached);
+            _fromCache = false;
+          });
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text('$newCount data baru ditemukan'),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 2),
+          ));
+        }
+      }
+    }
+  } catch (_) {}
+}
+
+Future<void> _fetchServer(String tanggal,
+    {bool clear = false}) async {
+  setState(() => _loading = true);
+  try {
+    if (clear) await _GaleriCache.clearDate(tanggal);
+    final res = await ApiService.getGaleriHadir(tanggal: tanggal);
+    if (res['status'] == true) {
+      final list = List<Map<String, dynamic>>.from(
+          res['data'] ?? []);
+      await _GaleriCache.saveNew(tanggal, list);
       _lastCached = DateTime.now();
+      final cached = await _GaleriCache.get(tanggal);
       setState(() {
-        _data      = list;
+        _data      = List<Map<String, dynamic>>.from(cached);
         _loading   = false;
         _fromCache = false;
       });
     } else {
       setState(() { _data = []; _loading = false; });
     }
+  } catch (_) {
+    setState(() => _loading = false);
   }
+}
 
   Future<void> _pilihTanggal() async {
     final picked = await showDatePicker(
@@ -186,83 +253,91 @@ class _GaleriScreenState extends State<GaleriScreen> {
   }
 
   Future<void> _showCacheInfo() async {
-    final total = await _GaleriCache.totalRows();
-    if (!mounted) return;
-    showModalBottomSheet(
-      context: context,
-      shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (_) => Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 40, height: 4,
-              margin: const EdgeInsets.only(bottom: 16),
-              decoration: BoxDecoration(
-                  color: Colors.grey[300],
-                  borderRadius: BorderRadius.circular(2)),
-            ),
-            const Text('Manajemen Cache',
-                style: TextStyle(
-                    fontSize: 16, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 16),
+  final total      = await _GaleriCache.totalRows();
+  final totalDates = await _GaleriCache.totalDates();
+  if (!mounted) return;
+  showModalBottomSheet(
+    context: context,
+    shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+    builder: (_) => Padding(
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 40, height: 4,
+            margin: const EdgeInsets.only(bottom: 16),
+            decoration: BoxDecoration(
+                color: Colors.grey[300],
+                borderRadius: BorderRadius.circular(2)),
+          ),
+          const Text('Manajemen Cache',
+              style: TextStyle(
+                  fontSize: 16, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 16),
+          ListTile(
+            leading: const CircleAvatar(
+                backgroundColor: Colors.blue,
+                child: Icon(Icons.storage, color: Colors.white)),
+            title: const Text('Data ter-cache'),
+            subtitle: Text(
+                '$total entri dari $totalDates tanggal'),
+          ),
+          ListTile(
+            leading: const CircleAvatar(
+                backgroundColor: Colors.purple,
+                child: Icon(Icons.image, color: Colors.white)),
+            title: const Text('Cache foto'),
+            subtitle: const Text(
+                'Dikelola otomatis oleh sistem'),
+          ),
+          if (_lastCached != null)
             ListTile(
               leading: const CircleAvatar(
-                  backgroundColor: Colors.blue,
-                  child: Icon(Icons.storage, color: Colors.white)),
-              title: const Text('Total data ter-cache'),
-              subtitle: Text('$total entri dari semua tanggal'),
+                  backgroundColor: Colors.green,
+                  child: Icon(Icons.update, color: Colors.white)),
+              title: const Text('Terakhir sync'),
+              subtitle: Text(
+                  '${_lastCached!.day}/${_lastCached!.month}/${_lastCached!.year} '
+                  '${_lastCached!.hour}:${_lastCached!.minute.toString().padLeft(2, '0')}'),
             ),
-            if (_lastCached != null)
-              ListTile(
-                leading: const CircleAvatar(
-                    backgroundColor: Colors.green,
-                    child: Icon(Icons.update, color: Colors.white)),
-                title: const Text('Cache tanggal ini'),
-                subtitle: Text(
-                    '${_lastCached!.day}/${_lastCached!.month}/${_lastCached!.year} '
-                    '${_lastCached!.hour}:${_lastCached!.minute.toString().padLeft(2, '0')}'),
-              ),
-            const Divider(),
-            ListTile(
-              leading: const CircleAvatar(
-                  backgroundColor: Colors.orange,
-                  child: Icon(Icons.refresh, color: Colors.white)),
-              title: const Text('Refresh tanggal ini'),
-              subtitle: const Text('Ambil ulang dari server'),
-              onTap: () {
-                Navigator.pop(context);
-                _loadData(forceRefresh: true);
-              },
-            ),
-            ListTile(
-              leading: const CircleAvatar(
-                  backgroundColor: Colors.red,
-                  child: Icon(Icons.delete, color: Colors.white)),
-              title: const Text('Hapus semua cache',
-                  style: TextStyle(color: Colors.red)),
-              subtitle: const Text('Data semua tanggal dihapus'),
-              onTap: () async {
-                Navigator.pop(context);
-                await _GaleriCache.clearAll();
-                imageCache.clear();
-                imageCache.clearLiveImages();
-                if (!mounted) return;
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                      content: Text('Semua cache dihapus'),
-                      backgroundColor: Colors.green),
-                );
-                _loadData(forceRefresh: true);
-              },
-            ),
-          ],
-        ),
+          const Divider(),
+          ListTile(
+            leading: const CircleAvatar(
+                backgroundColor: Colors.orange,
+                child: Icon(Icons.refresh, color: Colors.white)),
+            title: const Text('Sync ulang tanggal ini'),
+            onTap: () {
+              Navigator.pop(context);
+              _loadData(forceRefresh: true);
+            },
+          ),
+          ListTile(
+            leading: const CircleAvatar(
+                backgroundColor: Colors.red,
+                child: Icon(Icons.delete, color: Colors.white)),
+            title: const Text('Hapus semua cache data',
+                style: TextStyle(color: Colors.red)),
+            subtitle: const Text(
+                'Cache foto tetap tersimpan di sistem'),
+            onTap: () async {
+              Navigator.pop(context);
+              await _GaleriCache.clearAll();
+              if (!mounted) return;
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                    content: Text('Cache data dihapus'),
+                    backgroundColor: Colors.green),
+              );
+              _loadData(forceRefresh: true);
+            },
+          ),
+        ],
       ),
-    );
-  }
+    ),
+  );
+}
 
   List<Map<String, dynamic>> get _sorted {
     final list = List<Map<String, dynamic>>.from(_data);
@@ -483,11 +558,17 @@ class _GaleriScreenState extends State<GaleriScreen> {
                 fit: StackFit.expand,
                 children: [
                   fotoUrl.isNotEmpty
-                      ? Image.network(
-                          fotoUrl,
-                          fit: BoxFit.cover,
-                          errorBuilder: (_, __, ___) =>
-                              _placeholder(nama),
+    ? CachedNetworkImage(
+        imageUrl: fotoUrl,
+        fit: BoxFit.cover,
+        placeholder: (_, __) => Container(
+            color: Colors.grey[100],
+            child: const Center(
+                child: CircularProgressIndicator(
+                    strokeWidth: 2))),
+        errorWidget: (_, __, ___) => _placeholder(nama),
+      )
+    : _placeholder(nama),
                           loadingBuilder: (_, child, prog) =>
                               prog == null
                                   ? child
@@ -753,48 +834,41 @@ class _GaleriScreenState extends State<GaleriScreen> {
               : null,
           child: ClipRRect(
             borderRadius: BorderRadius.circular(12),
-            child: url.isNotEmpty
-                ? Stack(
-                    children: [
-                      Image.network(
-                        url,
-                        fit: BoxFit.cover,
-                        width: double.infinity,
-                        height: 160,
-                        errorBuilder: (_, __, ___) =>
-                            SizedBox(
-                              height: 160,
-                              child: _placeholder(nama),
-                            ),
-                        loadingBuilder: (_, child, prog) =>
-                            prog == null
-                                ? child
-                                : SizedBox(
-                                    height: 160,
-                                    child: Container(
-                                      color: Colors.grey[100],
-                                      child: const Center(
-                                          child:
-                                              CircularProgressIndicator(
-                                                  strokeWidth: 2)),
-                                    ),
-                                  ),
-                      ),
-                      // Tap hint
-                      Positioned(
-                        bottom: 8, right: 8,
-                        child: Container(
-                          padding: const EdgeInsets.all(4),
-                          decoration: const BoxDecoration(
-                            color: Colors.black45,
-                            shape: BoxShape.circle,
-                          ),
-                          child: const Icon(Icons.zoom_in,
-                              color: Colors.white, size: 16),
-                        ),
-                      ),
-                    ],
-                  )
+           fotoUrl.isNotEmpty
+    ? Stack(
+        children: [
+          CachedNetworkImage(
+            imageUrl: fotoUrl,
+            fit: BoxFit.cover,
+            width: double.infinity,
+            height: 160,
+            placeholder: (_, __) => SizedBox(
+              height: 160,
+              child: Container(
+                color: Colors.grey[100],
+                child: const Center(
+                    child: CircularProgressIndicator(
+                        strokeWidth: 2)),
+              ),
+            ),
+            errorWidget: (_, __, ___) =>
+                SizedBox(height: 160,
+                    child: _placeholder(nama)),
+          ),
+          Positioned(
+            bottom: 8, right: 8,
+            child: Container(
+              padding: const EdgeInsets.all(4),
+              decoration: const BoxDecoration(
+                color: Colors.black45,
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.zoom_in,
+                  color: Colors.white, size: 16),
+            ),
+          ),
+        ],
+      )
                 : Container(
                     height: 160,
                     decoration: BoxDecoration(
@@ -823,17 +897,18 @@ class _GaleriScreenState extends State<GaleriScreen> {
             title: Text('$label - $nama'),
           ),
           body: Center(
-            child: InteractiveViewer(
-              child: Image.network(
-                url,
-                fit: BoxFit.contain,
-                errorBuilder: (_, __, ___) => const Icon(
-                    Icons.broken_image,
-                    color: Colors.white,
-                    size: 64),
-              ),
-            ),
-          ),
+  child: InteractiveViewer(
+    child: CachedNetworkImage(
+      imageUrl: url,
+      fit: BoxFit.contain,
+      placeholder: (_, __) => const CircularProgressIndicator(
+          color: Colors.white),
+      errorWidget: (_, __, ___) => const Icon(
+          Icons.broken_image,
+          color: Colors.white, size: 64),
+    ),
+  ),
+),
         ),
       ),
     );
