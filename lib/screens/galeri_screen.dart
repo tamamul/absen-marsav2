@@ -828,7 +828,7 @@ Future<void> _fetchServer(String tanggal,
     ? Stack(
         children: [
           CachedNetworkImage(
-            imageUrl: Url,
+            imageUrl: url,
             fit: BoxFit.cover,
             width: double.infinity,
             height: 160,
