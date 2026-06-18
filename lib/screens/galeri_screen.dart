@@ -569,17 +569,7 @@ Future<void> _fetchServer(String tanggal,
         errorWidget: (_, __, ___) => _placeholder(nama),
       )
     : _placeholder(nama),
-                          loadingBuilder: (_, child, prog) =>
-                              prog == null
-                                  ? child
-                                  : Container(
-                                      color: Colors.grey[100],
-                                      child: const Center(
-                                          child:
-                                              CircularProgressIndicator(
-                                                  strokeWidth: 2))),
-                        )
-                      : _placeholder(nama),
+                          
                   Positioned(
                     top: 8, right: 8,
                     child: Container(
