@@ -823,8 +823,8 @@ Future<void> _fetchServer(String tanggal,
               ? () => _showFullscreen(url, label, nama)
               : null,
           child: ClipRRect(
-            borderRadius: BorderRadius.circular(12),
-           fotoUrl.isNotEmpty
+  borderRadius: BorderRadius.circular(12),
+  child: url.isNotEmpty
     ? Stack(
         children: [
           CachedNetworkImage(
