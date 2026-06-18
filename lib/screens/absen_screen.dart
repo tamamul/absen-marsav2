@@ -290,54 +290,44 @@ class _AbsenScreenState extends State<AbsenScreen> {
 
   // ✅ AMBIL FOTO DENGAN VERIFIKASI
   Future<void> _ambilFoto() async {
-    if (_cam == null) return;
+  if (_cam == null) return;
 
-    setState(() {
-      _fase = 'foto';
-      _setInstruksi();
-    });
+  setState(() {
+    _fase = 'foto';
+    _setInstruksi();
+  });
 
-    try {
-      if (!_isFaceStillPresent()) {
-        setState(() {
-          _pesan = 'Wajah tidak terdeteksi. Silakan ulangi.';
-        });
-        _ulangi();
-        return;
-      }
+  try {
+    // Stop stream dulu
+    await _cam!.stopImageStream();
+    await Future.delayed(const Duration(milliseconds: 400));
 
-      await _cam!.stopImageStream();
-      await Future.delayed(const Duration(milliseconds: 600));
+    final file = await _cam!.takePicture();
+    if (!mounted) return;
 
-      final file = await _cam!.takePicture();
-      if (!mounted) return;
+    final fotoFile = File(file.path);
+    setState(() => _foto = fotoFile);
 
-      final fotoFile = File(file.path);
-      setState(() => _foto = fotoFile);
+    setState(() => _instruksi = '🔍 Memeriksa foto...');
 
+    final adaWajah = await _verifikasiFoto(fotoFile);
+    if (!mounted) return;
+
+    if (adaWajah) {
+      await Future.delayed(const Duration(milliseconds: 300));
+      _kirimAbsen();
+    } else {
       setState(() {
-        _instruksi = '🔍 Memeriksa foto...';
-      });
-
-      final adaWajah = await _verifikasiFoto(fotoFile);
-      if (!mounted) return;
-
-      if (adaWajah) {
-        await Future.delayed(const Duration(milliseconds: 500));
-        _kirimAbsen();
-      } else {
-        setState(() {
-          _pesan = 'Wajah tidak terdeteksi di foto. Ulangi proses.';
-        });
-        _ulangi();
-      }
-    } catch (e) {
-      setState(() {
-        _pesan = 'Gagal foto: $e';
+        _pesan = 'Wajah tidak terdeteksi di foto. Ulangi.';
+        _foto  = null;
       });
       _ulangi();
     }
+  } catch (e) {
+    setState(() => _pesan = 'Gagal foto: $e');
+    _ulangi();
   }
+}
 
   Future<void> _kirimAbsen() async {
   if (_foto == null) return;
