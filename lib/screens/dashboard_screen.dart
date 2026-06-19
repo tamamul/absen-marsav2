@@ -51,6 +51,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
     _loadData();
     // Update jam tiap menit
     Future.delayed(const Duration(minutes: 1), _tickWaktu);
+// Auto cleanup cache
+  AppCacheManager.autoCleanup();
   }
 
   void _tickWaktu() {
