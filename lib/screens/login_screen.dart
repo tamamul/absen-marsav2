@@ -149,7 +149,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   controller: _loginCtrl,
                   decoration: InputDecoration(
                     labelText: 'Username / Email',
-                    labelStyle: const TextStyle(color: Colors.black45),
+                    labelStyle: const TextStyle(color: Colors.black54),
                     prefixIcon: const Icon(Icons.person_outline, color: primaryColor),
                     filled: true,
                     fillColor: inputBgColor,
@@ -167,7 +167,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   obscureText: _obscure,
                   decoration: InputDecoration(
                     labelText: 'Password',
-                    labelStyle: const TextStyle(color: Colors.black45),
+                    labelStyle: const TextStyle(color: Colors.black54),
                     prefixIcon: const Icon(Icons.lock_outline, color: primaryColor),
                     filled: true,
                     fillColor: inputBgColor,
