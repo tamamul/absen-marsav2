@@ -252,14 +252,17 @@ Future<void> _fetchServer(String tanggal,
     }
   }
 
-  Future<void> _showCacheInfo() async {
+Future<void> _showCacheInfo() async {
   final total      = await _GaleriCache.totalRows();
   final totalDates = await _GaleriCache.totalDates();
+  final sizeMb     = await AppCacheManager.getCacheSizeMb();
   if (!mounted) return;
+
   showModalBottomSheet(
     context: context,
     shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+        borderRadius:
+            BorderRadius.vertical(top: Radius.circular(20))),
     builder: (_) => Padding(
       padding: const EdgeInsets.all(20),
       child: Column(
@@ -275,60 +278,139 @@ Future<void> _fetchServer(String tanggal,
           const Text('Manajemen Cache',
               style: TextStyle(
                   fontSize: 16, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 16),
-          ListTile(
-            leading: const CircleAvatar(
-                backgroundColor: Colors.blue,
-                child: Icon(Icons.storage, color: Colors.white)),
-            title: const Text('Data ter-cache'),
-            subtitle: Text(
-                '$total entri dari $totalDates tanggal'),
-          ),
-          ListTile(
-            leading: const CircleAvatar(
-                backgroundColor: Colors.purple,
-                child: Icon(Icons.image, color: Colors.white)),
-            title: const Text('Cache foto'),
-            subtitle: const Text(
-                'Dikelola otomatis oleh sistem'),
-          ),
-          if (_lastCached != null)
-            ListTile(
-              leading: const CircleAvatar(
-                  backgroundColor: Colors.green,
-                  child: Icon(Icons.update, color: Colors.white)),
-              title: const Text('Terakhir sync'),
-              subtitle: Text(
-                  '${_lastCached!.day}/${_lastCached!.month}/${_lastCached!.year} '
-                  '${_lastCached!.hour}:${_lastCached!.minute.toString().padLeft(2, '0')}'),
+          const SizedBox(height: 12),
+
+          // Info storage
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.grey[50],
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.grey[200]!),
             ),
-          const Divider(),
+            child: Row(
+              children: [
+                Expanded(
+                  child: _cacheStatItem(
+                    Icons.table_rows,
+                    Colors.blue,
+                    '$total entri',
+                    'Data absensi',
+                  ),
+                ),
+                Expanded(
+                  child: _cacheStatItem(
+                    Icons.calendar_today,
+                    Colors.green,
+                    '$totalDates hari',
+                    'Tanggal tersimpan',
+                  ),
+                ),
+                Expanded(
+                  child: _cacheStatItem(
+                    Icons.image,
+                    Colors.purple,
+                    '${sizeMb.toStringAsFixed(1)} MB',
+                    'Cache foto',
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 8),
+
+          // Info auto cleanup
+          Container(
+            padding: const EdgeInsets.symmetric(
+                horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: Colors.green[50],
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: Colors.green[200]!),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.auto_delete,
+                    color: Colors.green[700], size: 18),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Auto cleanup aktif — cache lebih dari 7 hari dihapus otomatis',
+                    style: TextStyle(
+                        fontSize: 11, color: Colors.green[700]),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          if (_lastCached != null) ...[
+            const SizedBox(height: 4),
+            Text(
+              'Terakhir sync: ${_lastCached!.day}/${_lastCached!.month}/${_lastCached!.year} '
+              '${_lastCached!.hour}:${_lastCached!.minute.toString().padLeft(2, '0')}',
+              style: const TextStyle(fontSize: 11, color: Colors.grey),
+            ),
+          ],
+
+          const Divider(height: 20),
+
+          // Aksi
           ListTile(
+            contentPadding: EdgeInsets.zero,
             leading: const CircleAvatar(
                 backgroundColor: Colors.orange,
                 child: Icon(Icons.refresh, color: Colors.white)),
             title: const Text('Sync ulang tanggal ini'),
+            subtitle: const Text('Ambil data terbaru dari server'),
             onTap: () {
               Navigator.pop(context);
               _loadData(forceRefresh: true);
             },
           ),
           ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: const CircleAvatar(
+                backgroundColor: Colors.purple,
+                child: Icon(Icons.cleaning_services,
+                    color: Colors.white)),
+            title: const Text('Bersihkan cache lama'),
+            subtitle: const Text('Hapus data & foto > 7 hari'),
+            onTap: () async {
+              Navigator.pop(context);
+              final result = await AppCacheManager.cleanOldCache();
+              if (!mounted) return;
+              final hapusData = result['hapus_data'] as int;
+              final hapusFoto = result['hapus_foto'] as int;
+              final size = (result['size_mb'] as double)
+                  .toStringAsFixed(1);
+              ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                content: Text(
+                    'Dihapus: $hapusData data, $hapusFoto foto ($size MB)'),
+                backgroundColor: Colors.green,
+              ));
+              _loadData();
+            },
+          ),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
             leading: const CircleAvatar(
                 backgroundColor: Colors.red,
-                child: Icon(Icons.delete, color: Colors.white)),
-            title: const Text('Hapus semua cache data',
+                child: Icon(Icons.delete_forever,
+                    color: Colors.white)),
+            title: const Text('Hapus semua cache',
                 style: TextStyle(color: Colors.red)),
-            subtitle: const Text(
-                'Cache foto tetap tersimpan di sistem'),
+            subtitle: const Text('Semua data & foto dihapus'),
             onTap: () async {
               Navigator.pop(context);
               await _GaleriCache.clearAll();
+              await AppCacheManager.clearAllImageCache();
               if (!mounted) return;
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(
-                    content: Text('Cache data dihapus'),
-                    backgroundColor: Colors.green),
+                    content: Text('Semua cache dihapus'),
+                    backgroundColor: Colors.red),
               );
               _loadData(forceRefresh: true);
             },
@@ -336,6 +418,31 @@ Future<void> _fetchServer(String tanggal,
         ],
       ),
     ),
+  );
+}
+
+Widget _cacheStatItem(
+    IconData icon, Color color, String value, String label) {
+  return Column(
+    children: [
+      Container(
+        padding: const EdgeInsets.all(8),
+        decoration: BoxDecoration(
+          color: color.withOpacity(0.1),
+          shape: BoxShape.circle,
+        ),
+        child: Icon(icon, color: color, size: 20),
+      ),
+      const SizedBox(height: 4),
+      Text(value,
+          style: TextStyle(
+              fontWeight: FontWeight.bold,
+              color: color,
+              fontSize: 13)),
+      Text(label,
+          style: const TextStyle(fontSize: 10, color: Colors.grey),
+          textAlign: TextAlign.center),
+    ],
   );
 }
 
@@ -569,7 +676,7 @@ Future<void> _fetchServer(String tanggal,
         errorWidget: (_, __, ___) => _placeholder(nama),
       )
     : _placeholder(nama),
-                          
+
                   Positioned(
                     top: 8, right: 8,
                     child: Container(
