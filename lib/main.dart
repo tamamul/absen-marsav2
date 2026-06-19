@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart'; // Ditambahkan untuk mengatur warna status bar
 import 'package:shared_preferences/shared_preferences.dart';
 import 'config/api_config.dart';
 import 'screens/login_screen.dart';
@@ -18,8 +19,8 @@ class AbsenMarsaApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF1B5E20),
-          primary: const Color(0xFF1B5E20),
+          seedColor: const Color(0xFF4CAF50), // Menggunakan hijau aksen yang lebih cerah
+          primary: const Color(0xFF4CAF50),
         ),
         useMaterial3: true,
         fontFamily: 'Roboto',
@@ -29,6 +30,9 @@ class AbsenMarsaApp extends StatelessWidget {
   }
 }
 
+// ==========================================
+// SPLASH SCREEN (VERSI CLEAN & CERAH)
+// ==========================================
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
 
@@ -40,6 +44,13 @@ class _SplashScreenState extends State<SplashScreen> {
   @override
   void initState() {
     super.initState();
+    
+    // Mengatur status bar di bagian atas layar agar ikonnya berwarna gelap (karena background putih)
+    SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
+      statusBarColor: Colors.transparent,
+      statusBarIconBrightness: Brightness.dark,
+    ));
+
     _checkLogin();
   }
 
@@ -61,43 +72,73 @@ class _SplashScreenState extends State<SplashScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF1B5E20),
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              width: 120,
-              height: 120,
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(24),
+      backgroundColor: Colors.white, // Ganti background jadi putih bersih total
+      body: Column(
+        children: [
+          // Bagian Tengah: Logo & Teks Sekolah
+          Expanded(
+            child: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  // --- LOGO CLEAN (TANPA BORDER / CONTAINER PUTIH KAKU) ---
+                  Image.asset(
+                    'assets/logo.png',
+                    width: 140, // Sedikit diperbesar agar proporsional
+                    fit: BoxFit.contain,
+                  ),
+                  const SizedBox(height: 32),
+                  
+                  // --- TEKS GELAP MODERN ---
+                  const Text(
+                    'Absen MARSA',
+                    style: TextStyle(
+                      fontSize: 30,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.black87, // Diubah jadi gelap agar kontras
+                      letterSpacing: 0.5,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  const Text(
+                    'SMK Ma\'arif 9 Kebumen',
+                    style: TextStyle(
+                      color: Colors.black54, // Abu-abu halus minimalis
+                      fontSize: 15,
+                    ),
+                  ),
+                ],
               ),
-              child: Padding(
-                padding: const EdgeInsets.all(20),
-                child: Image.asset(
-                  'assets/logo.png',
-                  fit: BoxFit.contain,
+            ),
+          ),
+          
+          // Bagian Bawah: Loading Indikator & Footer
+          Padding(
+            padding: const EdgeInsets.only(bottom: 40.0),
+            child: Column(
+              children: [
+                // Loading indicator warna hijau cerah
+                const SizedBox(
+                  width: 24,
+                  height: 24,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2.5,
+                    color: Color(0xFF4CAF50),
+                  ),
                 ),
-              ),
+                const SizedBox(height: 32),
+                const Text(
+                  'Powered by MARSA Tech',
+                  style: TextStyle(
+                    color: Colors.black38,
+                    fontSize: 12,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(height: 24),
-            const Text(
-              'Absen MARSA',
-              style: TextStyle(
-                fontSize: 32,
-                fontWeight: FontWeight.bold,
-                color: Colors.white,
-              ),
-            ),
-            const Text(
-              'SMK Ma\'arif 9 Kebumen',
-              style: TextStyle(color: Colors.white70, fontSize: 14),
-            ),
-            const SizedBox(height: 48),
-            const CircularProgressIndicator(color: Colors.white),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
