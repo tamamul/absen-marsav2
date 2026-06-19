@@ -28,20 +28,30 @@ class _RiwayatScreenState extends State<RiwayatScreen> {
   }
 
   Future<void> _loadFromCache() async {
-    setState(() => _loading = true);
-    final hasCache = await RiwayatCache.hasCache();
-    if (hasCache) {
-      final cached = await RiwayatCache.getAll();
-      _lastCached  = await RiwayatCache.lastCached();
-      setState(() {
-        _allData = cached.map((e) => PresensiModel.fromJson(e)).toList();
-        _loading = false;
-      });
-      _applyFilter();
-    } else {
-      await _fetchFromServer();
-    }
+  setState(() => _loading = true);
+
+  final hasCache = await RiwayatCache.hasCache();
+
+  if (hasCache) {
+    final cached = await RiwayatCache.getAll();
+    _lastCached = await RiwayatCache.lastCached();
+
+    setState(() {
+      _allData = cached.map((e) => PresensiModel.fromJson(e)).toList();
+      _loading = false;
+    });
+
+    _applyFilter();
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _fetchFromServer();
+      }
+    });
+  } else {
+    await _fetchFromServer();
   }
+}
 
   Future<void> _fetchFromServer() async {
     setState(() => _loading = true);
