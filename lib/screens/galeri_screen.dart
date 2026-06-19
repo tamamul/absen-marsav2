@@ -158,7 +158,9 @@ class _GaleriScreenState extends State<GaleriScreen> {
   }
 
   Future<void> _loadData({bool forceRefresh = false}) async {
-  setState(() { _loading = true; _fromCache = false; });
+  if (!forceRefresh) {
+  setState(() => _loading = true);
+}
   final tanggal = _fmt(_tanggal);
 
   // 1. Tampil dari cache dulu (cepat)
@@ -182,54 +184,84 @@ class _GaleriScreenState extends State<GaleriScreen> {
 }
 
 Future<void> _syncBackground(String tanggal) async {
+  if (!mounted) return;
+
   try {
     final res = await ApiService.getGaleriHadir(tanggal: tanggal);
+
+    if (!mounted) return;
+
     if (res['status'] == true) {
-      final list     = List<Map<String, dynamic>>.from(
-          res['data'] ?? []);
+      final list = List<Map<String, dynamic>>.from(res['data'] ?? []);
+
       final newCount = await _GaleriCache.saveNew(tanggal, list);
+
+      if (!mounted) return;
+
       if (newCount > 0) {
-        // Ada data baru → update tampilan
         final cached = await _GaleriCache.get(tanggal);
-        _lastCached  = DateTime.now();
-        if (mounted) {
-          setState(() {
-            _data      = List<Map<String, dynamic>>.from(cached);
-            _fromCache = false;
-          });
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+
+        _lastCached = DateTime.now();
+
+        if (!mounted) return;
+
+        setState(() {
+          _data = List<Map<String, dynamic>>.from(cached);
+          _fromCache = false;
+        });
+
+        if (!mounted) return;
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
             content: Text('$newCount data baru ditemukan'),
             backgroundColor: Colors.green,
             duration: const Duration(seconds: 2),
-          ));
-        }
+          ),
+        );
       }
     }
-  } catch (_) {}
+  } catch (e) {
+    // optional debug
+    // print('sync error: $e');
+  }
 }
 
 Future<void> _fetchServer(String tanggal,
     {bool clear = false}) async {
   setState(() => _loading = true);
+
   try {
     if (clear) await _GaleriCache.clearDate(tanggal);
+
     final res = await ApiService.getGaleriHadir(tanggal: tanggal);
+
     if (res['status'] == true) {
-      final list = List<Map<String, dynamic>>.from(
-          res['data'] ?? []);
+      final list = List<Map<String, dynamic>>.from(res['data'] ?? []);
+
       await _GaleriCache.saveNew(tanggal, list);
-      _lastCached = DateTime.now();
+
       final cached = await _GaleriCache.get(tanggal);
+
+      if (!mounted) return;
+
       setState(() {
-        _data      = List<Map<String, dynamic>>.from(cached);
-        _loading   = false;
+        _data = List<Map<String, dynamic>>.from(cached);
+        _loading = false;
         _fromCache = false;
       });
+
     } else {
-      setState(() { _data = []; _loading = false; });
+      setState(() {
+        _data = [];
+        _loading = false;
+      });
     }
-  } catch (_) {
-    setState(() => _loading = false);
+  } catch (e) {
+    setState(() {
+      _loading = false;
+      _data = [];
+    });
   }
 }
 
