@@ -3,6 +3,7 @@ import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart' as p;
 import '../services/api_service.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import '../helpers/cache_manager.dart';
 
 
 
