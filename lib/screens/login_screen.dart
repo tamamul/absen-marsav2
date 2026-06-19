@@ -136,7 +136,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 const Text(
                   'SMK Ma\'arif 9 Kebumen',
                   style: TextStyle(
-                    color: Colors.black45,
+                    color: Colors.black54,
                     fontSize: 14,
                     fontWeight: FontWeight.w500,
                   ),
