@@ -27,10 +27,9 @@ class _LoginScreenState extends State<LoginScreen> {
 
   Future<void> _loadSavedLogin() async {
     final prefs = await SharedPreferences.getInstance();
-    
     _loginCtrl.text = prefs.getString('saved_username') ?? '';
     _passwordCtrl.text = prefs.getString('saved_password') ?? '';
-    
+
     setState(() {
       _rememberMe = prefs.getBool('remember_me') ?? true;
     });
@@ -82,7 +81,12 @@ class _LoginScreenState extends State<LoginScreen> {
 
   void _showSnack(String msg) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(msg)),
+      SnackBar(
+        content: Text(msg),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        backgroundColor: Colors.redAccent,
+      ),
     );
   }
 
@@ -99,142 +103,188 @@ class _LoginScreenState extends State<LoginScreen> {
       body: Container(
         decoration: const BoxDecoration(
           gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
             colors: [
-              Color(0xFF2E7D32),
-              Color(0xFF1B5E20),
+              Color(0xFF1E4620), // Hijau hutan modern
+              Color(0xFF0F2310), // Gelap elegan
             ],
           ),
         ),
         child: SafeArea(
           child: Center(
             child: SingleChildScrollView(
-              padding: const EdgeInsets.all(24),
+              padding: const EdgeInsets.symmetric(horizontal: 28.0),
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
+                  // --- AREA LOGO MODERN ---
                   Container(
-                    width: 120,
-                    height: 120,
+                    width: 100,
+                    height: 100,
                     decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(24),
-                      boxShadow: const [
-                        BoxShadow(
-                          blurRadius: 20,
-                          color: Colors.black26,
-                          offset: Offset(0, 8),
-                        ),
-                      ],
+                      color: Colors.white.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(28),
+                      border: Border.all(color: Colors.white.withOpacity(0.2)),
                     ),
-                    child: Padding(
-                      padding: const EdgeInsets.all(12),
-                      child: Image.asset(
-                        'assets/logo.png',
-                        fit: BoxFit.contain,
-                      ),
+                    padding: const EdgeInsets.all(16),
+                    child: Image.asset(
+                      'assets/logo.png',
+                      fit: BoxFit.contain,
                     ),
                   ),
                   const SizedBox(height: 24),
+                  
+                  // --- TYPOGRAPHY HITS ---
                   const Text(
                     'Absen MARSA',
                     style: TextStyle(
-                      fontSize: 28,
-                      fontWeight: FontWeight.bold,
+                      fontSize: 32,
+                      fontWeight: FontWeight.w800,
                       color: Colors.white,
+                      letterSpacing: 0.5,
                     ),
                   ),
-                  const Text(
+                  const SizedBox(height: 4),
+                  Text(
                     'SMK Ma\'arif 9 Kebumen',
-                    style: TextStyle(color: Colors.white70),
-                  ),
-                  const SizedBox(height: 40),
-                  Card(
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: Colors.white.withOpacity(0.6),
+                      letterSpacing: 0.5,
                     ),
-                    child: Padding(
-                      padding: const EdgeInsets.all(20),
-                      child: Column(
-                        children: [
-                          TextField(
-                            controller: _loginCtrl,
-                            decoration: const InputDecoration(
-                              labelText: 'Username / Email',
-                              prefixIcon: Icon(Icons.person),
-                              border: OutlineInputBorder(),
-                            ),
+                  ),
+                  const SizedBox(height: 48),
+
+                  // --- FORM CONTAINER (MODERN CLEAN) ---
+                  Container(
+                    padding: const EdgeInsets.all(24),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.06), // Efek kaca tipis
+                      borderRadius: BorderRadius.circular(32),
+                      border: Border.all(color: Colors.white.withOpacity(0.1)),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Silahkan Masuk',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
                           ),
-                          const SizedBox(height: 16),
-                          TextField(
-                            controller: _passwordCtrl,
-                            obscureText: _obscure,
-                            decoration: InputDecoration(
-                              labelText: 'Password',
-                              prefixIcon: const Icon(Icons.lock),
-                              border: const OutlineInputBorder(),
-                              suffixIcon: IconButton(
-                                icon: Icon(
-                                  _obscure ? Icons.visibility : Icons.visibility_off,
-                                ),
-                                onPressed: () {
-                                  setState(() {
-                                    _obscure = !_obscure;
-                                  });
-                                },
+                        ),
+                        const SizedBox(height: 20),
+
+                        // Input Username
+                        TextField(
+                          controller: _loginCtrl,
+                          style: const TextStyle(color: Colors.white),
+                          decoration: InputDecoration(
+                            hintText: 'Username / Email',
+                            hintStyle: TextStyle(color: Colors.white.withOpacity(0.4)),
+                            prefixIcon: Icon(Icons.person_outline, color: Colors.white.withOpacity(0.6)),
+                            filled: true,
+                            fillColor: Colors.white.withOpacity(0.08),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(16),
+                              borderSide: BorderSide.none,
+                            ),
+                            contentPadding: const EdgeInsets.symmetric(vertical: 16),
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+
+                        // Input Password
+                        TextField(
+                          controller: _passwordCtrl,
+                          obscureText: _obscure,
+                          style: const TextStyle(color: Colors.white),
+                          decoration: InputDecoration(
+                            hintText: 'Password',
+                            hintStyle: TextStyle(color: Colors.white.withOpacity(0.4)),
+                            prefixIcon: Icon(Icons.lock_outline, color: Colors.white.withOpacity(0.6)),
+                            filled: true,
+                            fillColor: Colors.white.withOpacity(0.08),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(16),
+                              borderSide: BorderSide.none,
+                            ),
+                            suffixIcon: IconButton(
+                              icon: Icon(
+                                _obscure ? Icons.visibility_outlined : Icons.visibility_off_outlined,
+                                color: Colors.white.withOpacity(0.6),
                               ),
+                              onPressed: () => setState(() => _obscure = !_obscure),
                             ),
+                            contentPadding: const EdgeInsets.symmetric(vertical: 16),
                           ),
-                          CheckboxListTile(
+                        ),
+                        const SizedBox(height: 12),
+
+                        // Remember Me Switch
+                        Theme(
+                          data: ThemeData(unselectedWidgetColor: Colors.white54),
+                          child: CheckboxListTile(
                             contentPadding: EdgeInsets.zero,
                             value: _rememberMe,
-                            title: const Text(
-                              'Ingat Username & Password',
-                              style: TextStyle(fontSize: 14),
+                            title: Text(
+                              'Ingat saya',
+                              style: TextStyle(fontSize: 14, color: Colors.white.withOpacity(0.8)),
                             ),
+                            activeColor: const Color(0xFF4CAF50),
+                            checkColor: Colors.white,
                             controlAffinity: ListTileControlAffinity.leading,
-                            onChanged: (v) {
-                              setState(() {
-                                _rememberMe = v ?? true;
-                              });
-                            },
+                            onChanged: (v) => setState(() => _rememberMe = v ?? true),
                           ),
-                          const SizedBox(height: 24),
-                          SizedBox(
-                            width: double.infinity,
-                            height: 48,
-                            child: ElevatedButton(
-                              onPressed: _loading ? null : _doLogin,
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: const Color(0xFF1B5E20),
-                                foregroundColor: Colors.white,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
+                        ),
+                        const SizedBox(height: 20),
+
+                        // --- BUTTON MASUK NEOMORPHIC/GLOW ---
+                        SizedBox(
+                          width: double.infinity,
+                          height: 54,
+                          child: ElevatedButton(
+                            onPressed: _loading ? null : _doLogin,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF4CAF50), // Hijau aksen cerah
+                              foregroundColor: Colors.white,
+                              elevation: 0,
+                              shadowColor: const Color(0xFF4CAF50).withOpacity(0.4),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(16),
                               ),
-                              child: _loading
-                                  ? const SizedBox(
-                                      width: 22,
-                                      height: 22,
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                        color: Colors.white,
-                                      ),
-                                    )
-                                  : const Text(
-                                      'MASUK',
-                                      style: TextStyle(
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
                             ),
+                            child: _loading
+                                ? const SizedBox(
+                                    width: 24,
+                                    height: 24,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2.5,
+                                      color: Colors.white,
+                                    ),
+                                  )
+                                : const Text(
+                                    'Masuk Aplikasi',
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold,
+                                      letterSpacing: 0.5,
+                                    ),
+                                  ),
                           ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
                   ),
+                  const SizedBox(height: 24),
+                  
+                  // Footer Opsional (bikin kelihatan official)
+                  Text(
+                    'v1.0.0 • Powered by MARSA DevCrew',
+                    style: TextStyle(color: Colors.white.withOpacity(0.3), fontSize: 12),
+                  )
                 ],
               ),
             ),
