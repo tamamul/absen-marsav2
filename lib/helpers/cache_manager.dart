@@ -84,12 +84,10 @@ class AppCacheManager {
 
   // ── Hapus semua cache foto ───────────────────────────────────
   static Future<void> clearAllImageCache() async {
-    try {
-      await DefaultCacheManager().emptyCache();
-      imageCache.clear();
-      imageCache.clearLiveImages();
-    } catch (_) {}
-  }
+  try {
+    await DefaultCacheManager().emptyCache();
+  } catch (_) {}
+}
 
   // ── Auto cleanup saat app dibuka ────────────────────────────
   // Panggil di main.dart atau initState dashboard
