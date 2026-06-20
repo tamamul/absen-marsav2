@@ -140,6 +140,7 @@ class _GaleriScreenState extends State<GaleriScreen> {
   @override
   void initState() {
     super.initState();
+    _loading = true;
     _loadData();
   }
 
