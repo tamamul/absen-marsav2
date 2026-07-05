@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:camera/camera.dart';
+import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
+import 'package:camera/camera.dart';
 import 'dart:io';
 import '../services/api_service.dart';
 
@@ -14,143 +15,204 @@ class AbsenScreen extends StatefulWidget {
   State<AbsenScreen> createState() => _AbsenScreenState();
 }
 
-class _AbsenScreenState extends State<AbsenScreen>
-    with WidgetsBindingObserver {
-  CameraController? _cam;
-  FaceDetector?     _detector;
+class _AbsenScreenState extends State<AbsenScreen> {
+  final FaceDetector _faceDetector = FaceDetector(
+    options: FaceDetectorOptions(
+      enableContours: true,
+      enableClassification: true,
+      minFaceSize: 0.3,
+      performanceMode: FaceDetectorMode.fast,
+    ),
+  );
 
-  bool   _loading   = true;
-  bool   _ambil     = false;
-  bool   _validasi  = false;
-  bool   _mengirim  = false;
-  File?  _foto;
-  String _pesan     = '';
-  String _instruksi = 'Posisikan wajah di dalam oval\nlalu tap tombol';
+  late CameraController _cameraController;
+  bool _isCameraInitialized = false;
+  bool _isDetecting         = false;
+  bool _mengirim            = false;
+  bool _validasi            = false;
+  File? _foto;
+  String _pesan             = '';
+
+  // Challenge
+  List<String> _challenges  = ['smile', 'blink', 'lookRight', 'lookLeft'];
+  int  _challengeIndex      = 0;
+  bool _waitingNeutral      = false;
+  bool _challengeDone       = false;
+
+  // Face data
+  double? _senyum;
+  double? _mataKiri;
+  double? _matKanan;
+  double? _eulerY;
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addObserver(this);
-    _detector = FaceDetector(
-      options: FaceDetectorOptions(
-        performanceMode: FaceDetectorMode.accurate,
-        minFaceSize: 0.1,
-      ),
-    );
-    _initCam();
+    _challenges.shuffle();
+    _initCamera();
   }
 
   @override
   void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
-    _cam?.dispose();
-    _detector?.close();
+    _cameraController.stopImageStream();
+    _faceDetector.close();
+    _cameraController.dispose();
     super.dispose();
   }
 
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.inactive) {
-      _cam?.dispose();
-    } else if (state == AppLifecycleState.resumed) {
-      _initCam();
+  Future<void> _initCamera() async {
+    final cameras = await availableCameras();
+    final front   = cameras.firstWhere(
+      (c) => c.lensDirection == CameraLensDirection.front,
+      orElse: () => cameras.first,
+    );
+    _cameraController = CameraController(
+      front,
+      ResolutionPreset.high,
+      enableAudio: false,
+    );
+    await _cameraController.initialize();
+    if (!mounted) return;
+    setState(() => _isCameraInitialized = true);
+    _startStream();
+  }
+
+  void _startStream() {
+    _cameraController.startImageStream((CameraImage image) {
+      if (!_isDetecting && !_challengeDone) {
+        _isDetecting = true;
+        _detectFaces(image).then((_) => _isDetecting = false);
+      }
+    });
+  }
+
+  Future<void> _detectFaces(CameraImage image) async {
+    try {
+      // Gabung semua planes — persis seperti kode referensi
+      final allBytes = WriteBuffer();
+      for (final plane in image.planes) {
+        allBytes.putUint8List(plane.bytes);
+      }
+      final bytes = allBytes.done().buffer.asUint8List();
+
+      final inputImage = InputImage.fromBytes(
+        bytes: bytes,
+        metadata: InputImageMetadata(
+          size: Size(image.width.toDouble(), image.height.toDouble()),
+          rotation: InputImageRotation.rotation270deg, // hardcode seperti referensi
+          format: InputImageFormat.nv21,               // hardcode nv21
+          bytesPerRow: image.planes[0].bytesPerRow,
+        ),
+      );
+
+      final faces = await _faceDetector.processImage(inputImage);
+      if (!mounted) return;
+
+      if (faces.isNotEmpty) {
+        final face = faces.first;
+        setState(() {
+          _senyum   = face.smilingProbability;
+          _mataKiri = face.leftEyeOpenProbability;
+          _matKanan = face.rightEyeOpenProbability;
+          _eulerY   = face.headEulerAngleY;
+        });
+        _cekChallenge(face);
+      } else {
+        if (mounted) setState(() {});
+      }
+    } catch (e) {
+      debugPrint('Detection error: $e');
     }
   }
 
-  Future<void> _initCam() async {
-    setState(() => _loading = true);
-    try {
-      final cams = await availableCameras();
-      if (cams.isEmpty) {
-        setState(() { _loading = false; _pesan = 'Kamera tidak tersedia'; });
-        return;
+  void _cekChallenge(Face face) {
+    if (_challengeDone) return;
+
+    if (_waitingNeutral) {
+      if (_isNeutral(face)) {
+        setState(() => _waitingNeutral = false);
       }
-      final cam = cams.firstWhere(
-        (c) => c.lensDirection == CameraLensDirection.front,
-        orElse: () => cams.first,
-      );
-
-      _cam = CameraController(
-        cam,
-        ResolutionPreset.medium,
-        enableAudio: false,
-        imageFormatGroup: ImageFormatGroup.jpeg,
-      );
-
-      await _cam!.initialize();
-
-      // Beri waktu kamera adjust exposure
-      await Future.delayed(const Duration(milliseconds: 800));
-
-      // Set exposure & focus ke tengah
-      try {
-        await _cam!.setExposureMode(ExposureMode.auto);
-        await _cam!.setFocusMode(FocusMode.auto);
-        await _cam!.setExposurePoint(const Offset(0.5, 0.5));
-        await _cam!.setFocusPoint(const Offset(0.5, 0.5));
-      } catch (_) {}
-
-      if (!mounted) return;
-      setState(() => _loading = false);
-    } catch (e) {
-      setState(() { _loading = false; _pesan = 'Error kamera: $e'; });
+      return;
     }
+
+    final action    = _challenges[_challengeIndex];
+    bool completed  = false;
+
+    switch (action) {
+      case 'smile':
+        completed = (face.smilingProbability ?? 0) > 0.5;
+        break;
+      case 'blink':
+        completed = (face.leftEyeOpenProbability  ?? 1) < 0.3 ||
+                    (face.rightEyeOpenProbability ?? 1) < 0.3;
+        break;
+      case 'lookRight':
+        completed = (face.headEulerAngleY ?? 0) < -10;
+        break;
+      case 'lookLeft':
+        completed = (face.headEulerAngleY ?? 0) > 10;
+        break;
+    }
+
+    if (completed) {
+      _challengeIndex++;
+      if (_challengeIndex >= _challenges.length) {
+        // Semua challenge selesai → ambil foto
+        setState(() => _challengeDone = true);
+        _ambilFoto();
+      } else {
+        setState(() => _waitingNeutral = true);
+      }
+    }
+  }
+
+  bool _isNeutral(Face face) {
+    return (face.smilingProbability    ?? 0)    < 0.1 &&
+           (face.leftEyeOpenProbability  ?? 1)  > 0.7 &&
+           (face.rightEyeOpenProbability ?? 1)  > 0.7 &&
+           ((face.headEulerAngleY ?? 0).abs()  < 10);
   }
 
   Future<void> _ambilFoto() async {
-    if (_cam == null || _ambil) return;
-    setState(() {
-      _ambil    = true;
-      _pesan    = '';
-      _instruksi = 'Mengambil foto...';
-    });
-
     try {
-      // Flash exposure sebentar sebelum capture
-      try {
-        await _cam!.setExposureOffset(0.0);
-      } catch (_) {}
-
-      await Future.delayed(const Duration(milliseconds: 200));
-      final file = await _cam!.takePicture();
+      await _cameraController.stopImageStream();
+      await Future.delayed(const Duration(milliseconds: 400));
+      final file = await _cameraController.takePicture();
       final foto = File(file.path);
 
       setState(() {
-        _foto    = foto;
-        _ambil   = false;
+        _foto     = foto;
         _validasi = true;
-        _instruksi = 'Memvalidasi wajah...';
       });
 
-      // Validasi wajah dari file foto
+      // Validasi wajah dari foto
       final input = InputImage.fromFile(foto);
-      final faces = await _detector!.processImage(input);
+      final faces = await _faceDetector.processImage(input);
 
       if (!mounted) return;
 
       if (faces.isEmpty) {
         setState(() {
-          _validasi  = false;
-          _foto      = null;
-          _pesan     = 'Wajah tidak terdeteksi.\nPastikan wajah terlihat jelas & cukup cahaya.';
-          _instruksi = 'Posisikan wajah di dalam oval\nlalu tap tombol';
+          _validasi      = false;
+          _foto          = null;
+          _challengeDone = false;
+          _challengeIndex = 0;
+          _challenges.shuffle();
+          _pesan = 'Wajah tidak terdeteksi di foto. Ulangi.';
         });
+        _startStream();
       } else {
-        setState(() {
-          _validasi  = false;
-          _instruksi = '✅ Wajah terdeteksi, mengirim...';
-        });
+        setState(() => _validasi = false);
         await Future.delayed(const Duration(milliseconds: 300));
         _kirimAbsen();
       }
     } catch (e) {
       setState(() {
-        _ambil    = false;
-        _validasi = false;
-        _foto     = null;
-        _pesan    = 'Gagal: $e';
-        _instruksi = 'Posisikan wajah di dalam oval\nlalu tap tombol';
+        _pesan         = 'Gagal ambil foto: $e';
+        _challengeDone = false;
+        _challengeIndex = 0;
       });
+      _startStream();
     }
   }
 
@@ -169,8 +231,8 @@ class _AbsenScreenState extends State<AbsenScreen>
     if (!mounted) return;
 
     if (res['status'] == true) {
-      final warning        = res['warning'];
-      final terlambat      = res['terlambat'] == true;
+      final warning   = res['warning'];
+      final terlambat = res['terlambat'] == true;
 
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: Text(res['message'] ?? 'Absen berhasil'),
@@ -213,7 +275,7 @@ class _AbsenScreenState extends State<AbsenScreen>
         Navigator.pop(context, true);
       }
     } else {
-      final errMsg = res['messages']?['error'] ??
+      final errMsg   = res['messages']?['error'] ??
           res['message'] ?? 'Absen gagal';
       final isPenting = errMsg.contains('belum dibuka') ||
           errMsg.contains('Belum waktunya') ||
@@ -247,24 +309,36 @@ class _AbsenScreenState extends State<AbsenScreen>
         );
         _ulangi();
       } else {
-        setState(() {
-          _foto      = null;
-          _pesan     = errMsg;
-          _instruksi = 'Posisikan wajah di dalam oval\nlalu tap tombol';
-        });
+        setState(() => _pesan = errMsg);
+        _ulangi();
       }
     }
   }
 
   void _ulangi() {
     setState(() {
-      _foto      = null;
-      _pesan     = '';
-      _ambil     = false;
-      _validasi  = false;
-      _mengirim  = false;
-      _instruksi = 'Posisikan wajah di dalam oval\nlalu tap tombol';
+      _foto           = null;
+      _pesan          = '';
+      _validasi       = false;
+      _mengirim       = false;
+      _challengeDone  = false;
+      _challengeIndex = 0;
+      _challenges.shuffle();
+      _waitingNeutral = false;
     });
+    _startStream();
+  }
+
+  String _instruksiChallenge() {
+    if (_challengeDone) return '📸 Mengambil foto...';
+    if (!_isCameraInitialized) return 'Menyiapkan kamera...';
+    switch (_challenges[_challengeIndex]) {
+      case 'smile':    return '😊 Tersenyum';
+      case 'blink':    return '👁️ Kedipkan mata';
+      case 'lookRight': return '👉 Lihat ke kanan';
+      case 'lookLeft':  return '👈 Lihat ke kiri';
+      default:         return '';
+    }
   }
 
   @override
@@ -283,43 +357,30 @@ class _AbsenScreenState extends State<AbsenScreen>
         elevation: 0,
       ),
       extendBodyBehindAppBar: true,
-      body: _loading
-          ? _buildLoading()
+      body: !_isCameraInitialized
+          ? const Center(
+              child: CircularProgressIndicator(color: Colors.white))
           : _foto != null
               ? _buildKonfirmasi(color, label)
               : _buildKamera(color),
     );
   }
 
-  Widget _buildLoading() {
-    return const Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          CircularProgressIndicator(color: Colors.white),
-          SizedBox(height: 16),
-          Text('Menyiapkan kamera...',
-              style: TextStyle(color: Colors.white70)),
-        ],
-      ),
-    );
-  }
-
   Widget _buildKamera(Color color) {
-    final sibuk = _ambil || _validasi;
-
     return Stack(
       fit: StackFit.expand,
       children: [
         // Preview fullscreen
-        if (_cam != null && _cam!.value.isInitialized)
-          CameraPreview(_cam!),
+        CameraPreview(_cameraController),
+
+        // Overlay gelap — cutout oval di tengah
+        CustomPaint(painter: _OvalOverlayPainter(color: color)),
 
         // Gradient atas
         Positioned(
           top: 0, left: 0, right: 0,
           child: Container(
-            height: 180,
+            height: 160,
             decoration: const BoxDecoration(
               gradient: LinearGradient(
                 begin: Alignment.topCenter,
@@ -330,38 +391,9 @@ class _AbsenScreenState extends State<AbsenScreen>
           ),
         ),
 
-        // Gradient bawah
-        Positioned(
-          bottom: 0, left: 0, right: 0,
-          child: Container(
-            height: 220,
-            decoration: const BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.bottomCenter,
-                end: Alignment.topCenter,
-                colors: [Colors.black87, Colors.transparent],
-              ),
-            ),
-          ),
-        ),
-
-        // Oval panduan wajah
-        Center(
-          child: Container(
-            width: 240, height: 300,
-            decoration: BoxDecoration(
-              border: Border.all(
-                color: sibuk ? Colors.orange : color,
-                width: 3,
-              ),
-              borderRadius: BorderRadius.circular(140),
-            ),
-          ),
-        ),
-
         // Instruksi atas
         Positioned(
-          top: 60, left: 20, right: 20,
+          top: 55, left: 20, right: 20,
           child: Center(
             child: Container(
               padding: const EdgeInsets.symmetric(
@@ -371,13 +403,67 @@ class _AbsenScreenState extends State<AbsenScreen>
                 borderRadius: BorderRadius.circular(30),
               ),
               child: Text(
-                _instruksi,
+                _instruksiChallenge(),
                 textAlign: TextAlign.center,
                 style: TextStyle(
-                    color: sibuk ? Colors.orange : Colors.white,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600),
+                    color: _challengeDone
+                        ? Colors.green
+                        : Colors.white,
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold),
               ),
+            ),
+          ),
+        ),
+
+        // Step indicator
+        Positioned(
+          top: 120, left: 20, right: 20,
+          child: Center(
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: List.generate(_challenges.length, (i) {
+                final done = i < _challengeIndex;
+                final curr = i == _challengeIndex;
+                return Container(
+                  width: 10, height: 10,
+                  margin: const EdgeInsets.symmetric(horizontal: 4),
+                  decoration: BoxDecoration(
+                    color: done
+                        ? Colors.green
+                        : curr
+                            ? color
+                            : Colors.white30,
+                    shape: BoxShape.circle,
+                  ),
+                );
+              }),
+            ),
+          ),
+        ),
+
+        // Debug info (bisa dihapus nanti)
+        Positioned(
+          bottom: 20, left: 16,
+          child: Container(
+            padding: const EdgeInsets.all(8),
+            color: Colors.black54,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Senyum: ${_senyum != null ? (_senyum! * 100).toStringAsFixed(0) : "N/A"}%',
+                  style: const TextStyle(
+                      color: Colors.white, fontSize: 11)),
+                Text(
+                  'Kedip: ${_mataKiri != null && _matKanan != null ? (((_mataKiri! + _matKanan!) / 2) * 100).toStringAsFixed(0) : "N/A"}%',
+                  style: const TextStyle(
+                      color: Colors.white, fontSize: 11)),
+                Text(
+                  'Arah: ${_eulerY?.toStringAsFixed(1) ?? "N/A"}°',
+                  style: const TextStyle(
+                      color: Colors.white, fontSize: 11)),
+              ],
             ),
           ),
         ),
@@ -385,13 +471,12 @@ class _AbsenScreenState extends State<AbsenScreen>
         // Error
         if (_pesan.isNotEmpty)
           Positioned(
-            top: 140, left: 20, right: 20,
+            bottom: 20, left: 20, right: 20,
             child: Container(
-              padding: const EdgeInsets.symmetric(
-                  horizontal: 16, vertical: 10),
+              padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
-                color: Colors.red[900]!.withOpacity(0.9),
-                borderRadius: BorderRadius.circular(12),
+                color: Colors.red[900],
+                borderRadius: BorderRadius.circular(10),
               ),
               child: Text(_pesan,
                   textAlign: TextAlign.center,
@@ -400,47 +485,26 @@ class _AbsenScreenState extends State<AbsenScreen>
             ),
           ),
 
-        // Tombol foto
-        Positioned(
-          bottom: 50, left: 0, right: 0,
-          child: Column(
-            children: [
-              GestureDetector(
-                onTap: sibuk ? null : _ambilFoto,
-                child: Container(
-                  width: 80, height: 80,
-                  decoration: BoxDecoration(
-                    color: sibuk ? Colors.grey : color,
-                    shape: BoxShape.circle,
-                    border: Border.all(
-                        color: Colors.white, width: 4),
-                    boxShadow: [
-                      BoxShadow(
-                        color: color.withOpacity(0.5),
-                        blurRadius: 15,
-                        spreadRadius: 3,
-                      ),
-                    ],
-                  ),
-                  child: sibuk
-                      ? const Padding(
-                          padding: EdgeInsets.all(20),
-                          child: CircularProgressIndicator(
-                              color: Colors.white, strokeWidth: 3),
-                        )
-                      : const Icon(Icons.camera_alt,
-                          color: Colors.white, size: 36),
-                ),
+        // Loading validasi/kirim
+        if (_validasi || _mengirim)
+          Container(
+            color: Colors.black54,
+            child: Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const CircularProgressIndicator(color: Colors.white),
+                  const SizedBox(height: 16),
+                  Text(
+                    _validasi
+                        ? 'Memvalidasi wajah...'
+                        : 'Mengirim...',
+                    style: const TextStyle(
+                        color: Colors.white, fontSize: 16)),
+                ],
               ),
-              const SizedBox(height: 8),
-              Text(
-                sibuk ? 'Memproses...' : 'Tap untuk foto',
-                style: const TextStyle(
-                    color: Colors.white70, fontSize: 12),
-              ),
-            ],
+            ),
           ),
-        ),
       ],
     );
   }
@@ -449,8 +513,7 @@ class _AbsenScreenState extends State<AbsenScreen>
     return Stack(
       fit: StackFit.expand,
       children: [
-        Image.file(_foto!, fit: BoxFit.cover),
-
+        if (_foto != null) Image.file(_foto!, fit: BoxFit.cover),
         if (_validasi || _mengirim)
           Container(
             color: Colors.black54,
@@ -470,27 +533,26 @@ class _AbsenScreenState extends State<AbsenScreen>
               ),
             ),
           ),
-
         if (!_validasi && !_mengirim) ...[
           if (_pesan.isNotEmpty)
             Positioned(
               bottom: 120, left: 20, right: 20,
               child: Container(
-                padding: const EdgeInsets.all(12),
+                padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
                     color: Colors.red[900],
-                    borderRadius: BorderRadius.circular(12)),
+                    borderRadius: BorderRadius.circular(10)),
                 child: Text(_pesan,
                     textAlign: TextAlign.center,
                     style: const TextStyle(color: Colors.white)),
               ),
             ),
           Positioned(
-            bottom: 40, left: 20, right: 20,
+            bottom: 30, left: 20, right: 20,
             child: ElevatedButton.icon(
               onPressed: _ulangi,
               icon: const Icon(Icons.refresh),
-              label: const Text('Ulangi Foto'),
+              label: const Text('Ulangi'),
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.white,
                 foregroundColor: Colors.black87,
@@ -504,4 +566,43 @@ class _AbsenScreenState extends State<AbsenScreen>
       ],
     );
   }
+}
+
+// Overlay gelap dengan lubang oval di tengah
+class _OvalOverlayPainter extends CustomPainter {
+  final Color color;
+  const _OvalOverlayPainter({required this.color});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = Colors.black.withOpacity(0.5)
+      ..style = PaintingStyle.fill;
+
+    final center = Offset(size.width / 2, size.height / 2);
+    final rx     = size.width  * 0.38;
+    final ry     = size.height * 0.28;
+
+    final path = Path()
+      ..addRect(Rect.fromLTWH(0, 0, size.width, size.height))
+      ..addOval(Rect.fromCenter(
+          center: center, width: rx * 2, height: ry * 2))
+      ..fillType = PathFillType.evenOdd;
+
+    canvas.drawPath(path, paint);
+
+    // Border oval
+    final borderPaint = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 3;
+    canvas.drawOval(
+      Rect.fromCenter(
+          center: center, width: rx * 2, height: ry * 2),
+      borderPaint,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter old) => false;
 }
