@@ -384,7 +384,15 @@ class _AbsenScreenState extends State<AbsenScreen> {
     return Stack(
       fit: StackFit.expand,
       children: [
-        CameraPreview(_cameraController),
+        Center(
+  child: ClipRRect(
+    borderRadius: BorderRadius.circular(16),
+    child: AspectRatio(
+      aspectRatio: _cameraController.value.aspectRatio,
+      child: CameraPreview(_cameraController),
+    ),
+  ),
+),
 
         // Overlay gelap dengan lubang lingkaran besar
         CustomPaint(painter: _CircleOverlayPainter()),
@@ -393,7 +401,7 @@ class _AbsenScreenState extends State<AbsenScreen> {
         Positioned(
           top: 0, left: 0, right: 0,
           child: Container(
-            height: 160,
+            height: 180,
             decoration: const BoxDecoration(
               gradient: LinearGradient(
                 begin: Alignment.topCenter,
