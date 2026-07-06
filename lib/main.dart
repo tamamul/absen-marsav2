@@ -55,19 +55,39 @@ class _SplashScreenState extends State<SplashScreen> {
   }
 
   Future<void> _checkLogin() async {
-    await Future.delayed(const Duration(seconds: 2));
-    final prefs = await SharedPreferences.getInstance();
-    final token = prefs.getString(ApiConfig.tokenKey);
+  await Future.delayed(const Duration(seconds: 1));
+  
+  final prefs = await SharedPreferences.getInstance();
+  final token = prefs.getString(ApiConfig.tokenKey);
 
+  if (!mounted) return;
+
+  if (token != null && token.isNotEmpty) {
+    // Verifikasi token masih valid ke server
+    final res = await ApiService.getPegawaiProfil();
     if (!mounted) return;
+    
+    if (res['status'] == true) {
+      // Token valid → langsung dashboard
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => const DashboardScreen()),
+      );
+    } else {
+      // Token expired/invalid → hapus → login
+      await ApiService.clearToken();
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => const LoginScreen()),
+      );
+    }
+  } else {
     Navigator.pushReplacement(
       context,
-      MaterialPageRoute(
-        builder: (_) =>
-            token != null ? const DashboardScreen() : const LoginScreen(),
-      ),
+      MaterialPageRoute(builder: (_) => const LoginScreen()),
     );
   }
+}
 
   @override
   Widget build(BuildContext context) {
