@@ -1,6 +1,6 @@
 class ApiConfig {
   static const String baseUrl =
-      'https://spemarga.com/absen/public/index.php';
+      'https://smk-maarif9kebumen.com/present/public/index.php';
 
   static const String login        = '$baseUrl/api/auth/login';
   static const String profile      = '$baseUrl/api/auth/profile';
