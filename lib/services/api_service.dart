@@ -64,18 +64,26 @@ class ApiService {
         pesan = 'Tidak dapat terhubung ke server.\nPastikan internet aktif.';
         break;
       case DioExceptionType.badResponse:
-        // Server merespon tapi error (4xx, 5xx)
-        try {
-          final data = e.response?.data;
-          if (data is Map) {
-            pesan = data['message'] ?? 'Server error ${e.response?.statusCode}';
-          } else {
-            pesan = 'Server error ${e.response?.statusCode}';
-          }
-        } catch (_) {
-          pesan = 'Server error ${e.response?.statusCode}';
-        }
-        break;
+  final statusCode = e.response?.statusCode;
+  if (statusCode == 401) {
+    pesan = 'Username atau password salah.';
+  } else if (statusCode == 422) {
+    pesan = 'Data tidak valid. Periksa kembali.';
+  } else if (statusCode == 500) {
+    pesan = 'Server sedang bermasalah. Coba lagi nanti.';
+  } else {
+    try {
+      final data = e.response?.data;
+      if (data is Map) {
+        pesan = data['message'] ?? 'Server error $statusCode';
+      } else {
+        pesan = 'Server error $statusCode';
+      }
+    } catch (_) {
+      pesan = 'Server error $statusCode';
+    }
+  }
+  break;
       default:
         pesan = 'Terjadi kesalahan. Coba lagi.';
     }
