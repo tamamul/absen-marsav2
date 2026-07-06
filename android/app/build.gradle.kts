@@ -7,7 +7,7 @@ plugins {
 
 android {
     namespace = "com.gradoid.scalable_flutter_app_starter"
-    compileSdk = 35
+    compileSdk = flutter.compileSdkVersion
     ndkVersion = "27.0.12077973"
 
     compileOptions {
@@ -22,12 +22,12 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.gradoid.scalable_flutter_app_starter"
-        minSdk = 24
-        targetSdk = flutter.targetSdkVersion
-        versionCode = flutter.versionCode()
-        versionName = flutter.versionName()
-        }
+    applicationId = "com.gradoid.scalable_flutter_app_starter"
+    minSdk = 24
+    targetSdk = flutter.targetSdkVersion
+    versionCode = flutter.versionCode
+    versionName = flutter.versionName
+}
 
 
     buildTypes {
