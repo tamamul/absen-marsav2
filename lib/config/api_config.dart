@@ -1,6 +1,6 @@
 class ApiConfig {
   static const String baseUrl =
-      'https://chat.marsa9.com/present/public/index.php';
+      'https://spemarga.com/absen/public/index.php';
 
   static const String login        = '$baseUrl/api/auth/login';
   static const String profile      = '$baseUrl/api/auth/profile';
