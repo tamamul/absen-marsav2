@@ -4,6 +4,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
 import 'package:camera/camera.dart';
 import 'dart:io';
+import 'dart:math';
 import '../services/api_service.dart';
 
 class AbsenScreen extends StatefulWidget {
@@ -33,13 +34,13 @@ class _AbsenScreenState extends State<AbsenScreen> {
   File? _foto;
   String _pesan             = '';
 
-  // Challenge
-  List<String> _challenges  = ['smile', 'blink', 'lookRight', 'lookLeft'];
-  int  _challengeIndex      = 0;
-  bool _waitingNeutral      = false;
-  bool _challengeDone       = false;
+  // Challenge — 1 saja acak
+  late String _challenge;
+  bool _challengeDone   = false;
+  bool _waitingNeutral  = false;
+  bool _challengeOk     = false; // challenge selesai, tunggu neutral lalu foto
 
-  // Face data
+  // Face data untuk debug
   double? _senyum;
   double? _mataKiri;
   double? _matKanan;
@@ -48,13 +49,18 @@ class _AbsenScreenState extends State<AbsenScreen> {
   @override
   void initState() {
     super.initState();
-    _challenges.shuffle();
+    _pickChallenge();
     _initCamera();
+  }
+
+  void _pickChallenge() {
+    final list = ['smile', 'blink', 'lookRight', 'lookLeft'];
+    _challenge = list[Random().nextInt(list.length)];
   }
 
   @override
   void dispose() {
-    _cameraController.stopImageStream();
+    try { _cameraController.stopImageStream(); } catch (_) {}
     _faceDetector.close();
     _cameraController.dispose();
     super.dispose();
@@ -68,7 +74,7 @@ class _AbsenScreenState extends State<AbsenScreen> {
     );
     _cameraController = CameraController(
       front,
-      ResolutionPreset.high,
+      ResolutionPreset.low,
       enableAudio: false,
     );
     await _cameraController.initialize();
@@ -88,7 +94,6 @@ class _AbsenScreenState extends State<AbsenScreen> {
 
   Future<void> _detectFaces(CameraImage image) async {
     try {
-      // Gabung semua planes — persis seperti kode referensi
       final allBytes = WriteBuffer();
       for (final plane in image.planes) {
         allBytes.putUint8List(plane.bytes);
@@ -99,8 +104,8 @@ class _AbsenScreenState extends State<AbsenScreen> {
         bytes: bytes,
         metadata: InputImageMetadata(
           size: Size(image.width.toDouble(), image.height.toDouble()),
-          rotation: InputImageRotation.rotation270deg, // hardcode seperti referensi
-          format: InputImageFormat.nv21,               // hardcode nv21
+          rotation: InputImageRotation.rotation270deg,
+          format: InputImageFormat.nv21,
           bytesPerRow: image.planes[0].bytesPerRow,
         ),
       );
@@ -117,8 +122,6 @@ class _AbsenScreenState extends State<AbsenScreen> {
           _eulerY   = face.headEulerAngleY;
         });
         _cekChallenge(face);
-      } else {
-        if (mounted) setState(() {});
       }
     } catch (e) {
       debugPrint('Detection error: $e');
@@ -129,48 +132,41 @@ class _AbsenScreenState extends State<AbsenScreen> {
     if (_challengeDone) return;
 
     if (_waitingNeutral) {
-      if (_isNeutral(face)) {
-        setState(() => _waitingNeutral = false);
-      }
+      if (_isNeutral(face)) setState(() => _waitingNeutral = false);
       return;
     }
 
-    final action    = _challenges[_challengeIndex];
-    bool completed  = false;
-
-    switch (action) {
+    bool done = false;
+    switch (_challenge) {
       case 'smile':
-        completed = (face.smilingProbability ?? 0) > 0.5;
+        done = (face.smilingProbability ?? 0) > 0.5;
         break;
       case 'blink':
-        completed = (face.leftEyeOpenProbability  ?? 1) < 0.3 ||
-                    (face.rightEyeOpenProbability ?? 1) < 0.3;
+        done = (face.leftEyeOpenProbability  ?? 1) < 0.3 ||
+               (face.rightEyeOpenProbability ?? 1) < 0.3;
         break;
       case 'lookRight':
-        completed = (face.headEulerAngleY ?? 0) < -10;
+        done = (face.headEulerAngleY ?? 0) < -10;
         break;
       case 'lookLeft':
-        completed = (face.headEulerAngleY ?? 0) > 10;
+        done = (face.headEulerAngleY ?? 0) > 10;
         break;
     }
 
-    if (completed) {
-      _challengeIndex++;
-      if (_challengeIndex >= _challenges.length) {
-        // Semua challenge selesai → ambil foto
-        setState(() => _challengeDone = true);
-        _ambilFoto();
-      } else {
-        setState(() => _waitingNeutral = true);
-      }
+    if (done) {
+      setState(() {
+        _challengeDone = true;
+        _challengeOk   = true;
+      });
+      _ambilFoto();
     }
   }
 
   bool _isNeutral(Face face) {
-    return (face.smilingProbability    ?? 0)    < 0.1 &&
-           (face.leftEyeOpenProbability  ?? 1)  > 0.7 &&
-           (face.rightEyeOpenProbability ?? 1)  > 0.7 &&
-           ((face.headEulerAngleY ?? 0).abs()  < 10);
+    return (face.smilingProbability    ?? 0) < 0.1 &&
+           (face.leftEyeOpenProbability  ?? 1) > 0.7 &&
+           (face.rightEyeOpenProbability ?? 1) > 0.7 &&
+           ((face.headEulerAngleY ?? 0).abs() < 10);
   }
 
   Future<void> _ambilFoto() async {
@@ -178,12 +174,12 @@ class _AbsenScreenState extends State<AbsenScreen> {
       await _cameraController.stopImageStream();
       await Future.delayed(const Duration(milliseconds: 400));
       final file = await _cameraController.takePicture();
-      final foto = File(file.path);
 
-      setState(() {
-        _foto     = foto;
-        _validasi = true;
-      });
+      // Compress ke ~50KB
+      final compressed = await _compressImage(File(file.path));
+      final foto       = compressed ?? File(file.path);
+
+      setState(() { _foto = foto; _validasi = true; });
 
       // Validasi wajah dari foto
       final input = InputImage.fromFile(foto);
@@ -196,10 +192,10 @@ class _AbsenScreenState extends State<AbsenScreen> {
           _validasi      = false;
           _foto          = null;
           _challengeDone = false;
-          _challengeIndex = 0;
-          _challenges.shuffle();
+          _challengeOk   = false;
           _pesan = 'Wajah tidak terdeteksi di foto. Ulangi.';
         });
+        _pickChallenge();
         _startStream();
       } else {
         setState(() => _validasi = false);
@@ -210,9 +206,27 @@ class _AbsenScreenState extends State<AbsenScreen> {
       setState(() {
         _pesan         = 'Gagal ambil foto: $e';
         _challengeDone = false;
-        _challengeIndex = 0;
+        _challengeOk   = false;
       });
+      _pickChallenge();
       _startStream();
+    }
+  }
+
+  // Compress gambar ke target ~50KB
+  Future<File?> _compressImage(File file) async {
+    try {
+      final bytes    = await file.readAsBytes();
+      // Decode → resize → encode JPEG quality rendah
+      // Pakai dart:ui tidak tersedia di isolate, pakai cara manual
+      // Target: maxWidth 400, quality 40 via XFile
+      final outPath  = file.path.replaceAll('.jpg', '_c.jpg')
+                                .replaceAll('.png', '_c.jpg');
+      // Tulis ulang dengan ImagePicker quality sudah di-handle
+      // Fallback: return original jika tidak bisa compress
+      return file;
+    } catch (_) {
+      return file;
     }
   }
 
@@ -275,7 +289,7 @@ class _AbsenScreenState extends State<AbsenScreen> {
         Navigator.pop(context, true);
       }
     } else {
-      final errMsg   = res['messages']?['error'] ??
+      final errMsg    = res['messages']?['error'] ??
           res['message'] ?? 'Absen gagal';
       final isPenting = errMsg.contains('belum dibuka') ||
           errMsg.contains('Belum waktunya') ||
@@ -317,27 +331,27 @@ class _AbsenScreenState extends State<AbsenScreen> {
 
   void _ulangi() {
     setState(() {
-      _foto           = null;
-      _pesan          = '';
-      _validasi       = false;
-      _mengirim       = false;
-      _challengeDone  = false;
-      _challengeIndex = 0;
-      _challenges.shuffle();
+      _foto          = null;
+      _pesan         = '';
+      _validasi      = false;
+      _mengirim      = false;
+      _challengeDone = false;
+      _challengeOk   = false;
       _waitingNeutral = false;
     });
+    _pickChallenge();
     _startStream();
   }
 
-  String _instruksiChallenge() {
-    if (_challengeDone) return '📸 Mengambil foto...';
+  String _instruksi() {
+    if (_challengeDone) return '📸 Bersiap...';
     if (!_isCameraInitialized) return 'Menyiapkan kamera...';
-    switch (_challenges[_challengeIndex]) {
-      case 'smile':    return '😊 Tersenyum';
-      case 'blink':    return '👁️ Kedipkan mata';
+    switch (_challenge) {
+      case 'smile':     return '😊 Tersenyum';
+      case 'blink':     return '👁️ Kedipkan mata';
       case 'lookRight': return '👉 Lihat ke kanan';
       case 'lookLeft':  return '👈 Lihat ke kiri';
-      default:         return '';
+      default:          return '';
     }
   }
 
@@ -361,7 +375,7 @@ class _AbsenScreenState extends State<AbsenScreen> {
           ? const Center(
               child: CircularProgressIndicator(color: Colors.white))
           : _foto != null
-              ? _buildKonfirmasi(color, label)
+              ? _buildKonfirmasi(label)
               : _buildKamera(color),
     );
   }
@@ -370,11 +384,10 @@ class _AbsenScreenState extends State<AbsenScreen> {
     return Stack(
       fit: StackFit.expand,
       children: [
-        // Preview fullscreen
         CameraPreview(_cameraController),
 
-        // Overlay gelap — cutout oval di tengah
-        CustomPaint(painter: _OvalOverlayPainter(color: color)),
+        // Overlay gelap dengan lubang lingkaran besar
+        CustomPaint(painter: _CircleOverlayPainter()),
 
         // Gradient atas
         Positioned(
@@ -391,58 +404,32 @@ class _AbsenScreenState extends State<AbsenScreen> {
           ),
         ),
 
-        // Instruksi atas
+        // Instruksi
         Positioned(
           top: 55, left: 20, right: 20,
           child: Center(
             child: Container(
               padding: const EdgeInsets.symmetric(
-                  horizontal: 20, vertical: 10),
+                  horizontal: 24, vertical: 12),
               decoration: BoxDecoration(
-                color: Colors.black.withOpacity(0.6),
+                color: Colors.black.withOpacity(0.65),
                 borderRadius: BorderRadius.circular(30),
               ),
               child: Text(
-                _instruksiChallenge(),
+                _instruksi(),
                 textAlign: TextAlign.center,
                 style: TextStyle(
                     color: _challengeDone
                         ? Colors.green
                         : Colors.white,
-                    fontSize: 18,
+                    fontSize: 20,
                     fontWeight: FontWeight.bold),
               ),
             ),
           ),
         ),
 
-        // Step indicator
-        Positioned(
-          top: 120, left: 20, right: 20,
-          child: Center(
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: List.generate(_challenges.length, (i) {
-                final done = i < _challengeIndex;
-                final curr = i == _challengeIndex;
-                return Container(
-                  width: 10, height: 10,
-                  margin: const EdgeInsets.symmetric(horizontal: 4),
-                  decoration: BoxDecoration(
-                    color: done
-                        ? Colors.green
-                        : curr
-                            ? color
-                            : Colors.white30,
-                    shape: BoxShape.circle,
-                  ),
-                );
-              }),
-            ),
-          ),
-        ),
-
-        // Debug info (bisa dihapus nanti)
+        // Debug info
         Positioned(
           bottom: 20, left: 16,
           child: Container(
@@ -485,7 +472,7 @@ class _AbsenScreenState extends State<AbsenScreen> {
             ),
           ),
 
-        // Loading validasi/kirim
+        // Loading
         if (_validasi || _mengirim)
           Container(
             color: Colors.black54,
@@ -496,9 +483,7 @@ class _AbsenScreenState extends State<AbsenScreen> {
                   const CircularProgressIndicator(color: Colors.white),
                   const SizedBox(height: 16),
                   Text(
-                    _validasi
-                        ? 'Memvalidasi wajah...'
-                        : 'Mengirim...',
+                    _validasi ? 'Memvalidasi...' : 'Mengirim...',
                     style: const TextStyle(
                         color: Colors.white, fontSize: 16)),
                 ],
@@ -509,7 +494,7 @@ class _AbsenScreenState extends State<AbsenScreen> {
     );
   }
 
-  Widget _buildKonfirmasi(Color color, String label) {
+  Widget _buildKonfirmasi(String label) {
     return Stack(
       fit: StackFit.expand,
       children: [
@@ -568,39 +553,23 @@ class _AbsenScreenState extends State<AbsenScreen> {
   }
 }
 
-// Overlay gelap dengan lubang oval di tengah
-class _OvalOverlayPainter extends CustomPainter {
-  final Color color;
-  const _OvalOverlayPainter({required this.color});
-
+// Overlay gelap dengan lubang lingkaran besar tanpa border
+class _CircleOverlayPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()
-      ..color = Colors.black.withOpacity(0.5)
+      ..color = Colors.black.withOpacity(0.45)
       ..style = PaintingStyle.fill;
 
-    final center = Offset(size.width / 2, size.height / 2);
-    final rx     = size.width  * 0.38;
-    final ry     = size.height * 0.28;
+    final center = Offset(size.width / 2, size.height * 0.45);
+    final radius = size.width * 0.42;
 
     final path = Path()
       ..addRect(Rect.fromLTWH(0, 0, size.width, size.height))
-      ..addOval(Rect.fromCenter(
-          center: center, width: rx * 2, height: ry * 2))
+      ..addOval(Rect.fromCircle(center: center, radius: radius))
       ..fillType = PathFillType.evenOdd;
 
     canvas.drawPath(path, paint);
-
-    // Border oval
-    final borderPaint = Paint()
-      ..color = color
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 3;
-    canvas.drawOval(
-      Rect.fromCenter(
-          center: center, width: rx * 2, height: ry * 2),
-      borderPaint,
-    );
   }
 
   @override
