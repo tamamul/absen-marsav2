@@ -48,16 +48,16 @@ class _LoginScreenState extends State<LoginScreen> {
 
   // Fungsi login dengan penanganan error lengkap
   Future<void> _doLogin() async {
-  if (_loginCtrl.text.isEmpty || _passwordCtrl.text.isEmpty) {
-    _showSnack('Username dan password wajib diisi');
+  if (_usernameController.text.isEmpty || _passwordController.text.isEmpty) {
+    _showSnackBar('Username dan password wajib diisi');
     return;
   }
 
   setState(() => _loading = true);
 
   final res = await ApiService.login(
-    _loginCtrl.text.trim(),
-    _passwordCtrl.text,
+    _usernameController.text.trim(),
+    _passwordController.text,
   );
 
   setState(() => _loading = false);
@@ -67,13 +67,23 @@ class _LoginScreenState extends State<LoginScreen> {
     final user  = res['data']?['user'];
 
     if (token == null || user == null) {
-      _showSnack('Response server tidak valid. Coba lagi.');
+      _showSnackBar('Response server tidak valid. Coba lagi.');
       return;
     }
 
     await ApiService.saveToken(token);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(ApiConfig.userKey, jsonEncode(user));
+
+    if (_rememberMe) {
+      await prefs.setString('saved_username', _usernameController.text.trim());
+      await prefs.setString('saved_password', _passwordController.text);
+      await prefs.setBool('remember_me', true);
+    } else {
+      await prefs.remove('saved_username');
+      await prefs.remove('saved_password');
+      await prefs.setBool('remember_me', false);
+    }
 
     if (!mounted) return;
     Navigator.pushReplacement(
@@ -84,21 +94,25 @@ class _LoginScreenState extends State<LoginScreen> {
     final pesan = res['message'] ??
         res['messages']?['error'] ??
         'Login gagal. Coba lagi.';
-    _showSnack(pesan.toString());
+    _showSnackBar(pesan.toString());
   }
 }
 
-void _showSnack(String msg) {
+void _showSnackBar(String msg, {bool isError = true}) {
   ScaffoldMessenger.of(context).showSnackBar(
     SnackBar(
       content: Row(
         children: [
-          const Icon(Icons.error_outline, color: Colors.white, size: 18),
+          Icon(
+            isError ? Icons.error_outline : Icons.info_outline,
+            color: Colors.white,
+            size: 18,
+          ),
           const SizedBox(width: 8),
           Expanded(child: Text(msg)),
         ],
       ),
-      backgroundColor: Colors.red[700],
+      backgroundColor: isError ? Colors.red[700] : Colors.blue[700],
       behavior: SnackBarBehavior.floating,
       shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(10)),
