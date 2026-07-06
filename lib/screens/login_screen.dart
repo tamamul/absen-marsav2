@@ -48,91 +48,65 @@ class _LoginScreenState extends State<LoginScreen> {
 
   // Fungsi login dengan penanganan error lengkap
   Future<void> _doLogin() async {
-    // Validasi form
-    if (!_formKey.currentState!.validate()) {
+  if (_loginCtrl.text.isEmpty || _passwordCtrl.text.isEmpty) {
+    _showSnack('Username dan password wajib diisi');
+    return;
+  }
+
+  setState(() => _loading = true);
+
+  final res = await ApiService.login(
+    _loginCtrl.text.trim(),
+    _passwordCtrl.text,
+  );
+
+  setState(() => _loading = false);
+
+  if (res['status'] == true) {
+    final token = res['data']?['token'];
+    final user  = res['data']?['user'];
+
+    if (token == null || user == null) {
+      _showSnack('Response server tidak valid. Coba lagi.');
       return;
     }
 
-    setState(() => _loading = true);
+    await ApiService.saveToken(token);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(ApiConfig.userKey, jsonEncode(user));
 
-    try {
-      final response = await ApiService.login(
-        _usernameController.text.trim(),
-        _passwordController.text,
-      );
-
-      // Cek apakah response berhasil
-      if (response['status'] == true) {
-        // Ambil token dan data user
-        final token = response['data']?['token'];
-        final user = response['data']?['user'];
-
-        if (token == null || user == null) {
-          throw Exception('Data token atau user tidak lengkap');
-        }
-
-        // Simpan token di ApiService
-        await ApiService.saveToken(token);
-
-        // Simpan user ke SharedPreferences
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setString(ApiConfig.userKey, jsonEncode(user));
-
-        // Simpan / hapus credential sesuai remember me
-        if (_rememberMe) {
-          await prefs.setString('saved_username', _usernameController.text.trim());
-          await prefs.setString('saved_password', _passwordController.text);
-          await prefs.setBool('remember_me', true);
-        } else {
-          await prefs.remove('saved_username');
-          await prefs.remove('saved_password');
-          await prefs.setBool('remember_me', false);
-        }
-
-        if (!mounted) return;
-        // Navigasi ke dashboard
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (_) => const DashboardScreen()),
-        );
-      } else {
-        // Tampilkan pesan error dari server
-        final errorMsg = response['messages']?['error'] ?? 'Login gagal, periksa kembali data Anda';
-        _showSnackBar(errorMsg, isError: true);
-      }
-    } catch (e) {
-      // Tangani error koneksi atau lainnya
-      _showSnackBar('Terjadi kesalahan: ${e.toString()}', isError: true);
-    } finally {
-      if (mounted) {
-        setState(() => _loading = false);
-      }
-    }
-  }
-
-  // Snackbar custom dengan desain modern
-  void _showSnackBar(String message, {bool isError = true}) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Row(
-          children: [
-            Icon(
-              isError ? Icons.error_outline : Icons.check_circle_outline,
-              color: Colors.white,
-            ),
-            const SizedBox(width: 12),
-            Expanded(child: Text(message)),
-          ],
-        ),
-        backgroundColor: isError ? Colors.redAccent : Colors.green,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        margin: const EdgeInsets.all(16),
-        duration: const Duration(seconds: 3),
-      ),
+    if (!mounted) return;
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(builder: (_) => const DashboardScreen()),
     );
+  } else {
+    final pesan = res['message'] ??
+        res['messages']?['error'] ??
+        'Login gagal. Coba lagi.';
+    _showSnack(pesan.toString());
   }
+}
 
+void _showSnack(String msg) {
+  ScaffoldMessenger.of(context).showSnackBar(
+    SnackBar(
+      content: Row(
+        children: [
+          const Icon(Icons.error_outline, color: Colors.white, size: 18),
+          const SizedBox(width: 8),
+          Expanded(child: Text(msg)),
+        ],
+      ),
+      backgroundColor: Colors.red[700],
+      behavior: SnackBarBehavior.floating,
+      shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(10)),
+      duration: const Duration(seconds: 4),
+    ),
+  );
+}
+ 
   @override
   void dispose() {
     _usernameController.dispose();
