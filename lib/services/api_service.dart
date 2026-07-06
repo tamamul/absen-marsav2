@@ -39,18 +39,51 @@ class ApiService {
 
   // LOGIN
   static Future<Map<String, dynamic>> login(
-      String login, String password) async {
-    try {
-      final res = await _dio.post(
-        ApiConfig.login,
-        data: {'login': login, 'password': password},
-        options: Options(headers: {'Content-Type': 'application/json'}),
-      );
-      return res.data;
-    } on DioException catch (e) {
-      return e.response?.data ?? {'status': false, 'message': 'Koneksi gagal'};
+    String login, String password) async {
+  try {
+    final res = await _dio.post(
+      ApiConfig.login,
+      data: {'login': login, 'password': password},
+      options: Options(
+        headers: {'Content-Type': 'application/json'},
+        sendTimeout:    const Duration(seconds: 10),
+        receiveTimeout: const Duration(seconds: 10),
+      ),
+    );
+    return res.data;
+  } on DioException catch (e) {
+    // Tangkap semua jenis error jaringan
+    String pesan;
+    switch (e.type) {
+      case DioExceptionType.connectionTimeout:
+      case DioExceptionType.sendTimeout:
+      case DioExceptionType.receiveTimeout:
+        pesan = 'Koneksi timeout. Periksa jaringan Anda.';
+        break;
+      case DioExceptionType.connectionError:
+        pesan = 'Tidak dapat terhubung ke server.\nPastikan internet aktif.';
+        break;
+      case DioExceptionType.badResponse:
+        // Server merespon tapi error (4xx, 5xx)
+        try {
+          final data = e.response?.data;
+          if (data is Map) {
+            pesan = data['message'] ?? 'Server error ${e.response?.statusCode}';
+          } else {
+            pesan = 'Server error ${e.response?.statusCode}';
+          }
+        } catch (_) {
+          pesan = 'Server error ${e.response?.statusCode}';
+        }
+        break;
+      default:
+        pesan = 'Terjadi kesalahan. Coba lagi.';
     }
+    return {'status': false, 'message': pesan};
+  } catch (e) {
+    return {'status': false, 'message': 'Error tidak diketahui: $e'};
   }
+}
 
   // PROFIL PEGAWAI
   static Future<Map<String, dynamic>> getPegawaiProfil() async {
