@@ -466,7 +466,7 @@ Widget _cacheStatItem(
 
   String _fotoUrl(String? nama, String tipe) {
     if (nama == null || nama.isEmpty) return '';
-    return 'https://chat.marsa9.com/present/public/assets/img/foto_presensi/$tipe/$nama';
+    return 'https://smk-maarif9kebumen.com/present/public/assets/img/foto_presensi/$tipe/$nama';
   }
 
   @override
