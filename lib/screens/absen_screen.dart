@@ -385,32 +385,16 @@ class _AbsenScreenState extends State<AbsenScreen> {
       fit: StackFit.expand,
       children: [
         Center(
-  child: ClipRRect(
-    borderRadius: BorderRadius.circular(16),
+  child: SizedBox(
+    width: MediaQuery.of(context).size.width,
     child: AspectRatio(
-      aspectRatio: _cameraController.value.aspectRatio,
+      aspectRatio: 1 / _cameraController.value.aspectRatio,
       child: CameraPreview(_cameraController),
     ),
   ),
 ),
 
-        // Overlay gelap dengan lubang lingkaran besar
-        CustomPaint(painter: _CircleOverlayPainter()),
-
-        // Gradient atas
-        Positioned(
-          top: 0, left: 0, right: 0,
-          child: Container(
-            height: 180,
-            decoration: const BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [Colors.black87, Colors.transparent],
-              ),
-            ),
-          ),
-        ),
+        
 
         // Instruksi
         Positioned(
@@ -561,25 +545,3 @@ class _AbsenScreenState extends State<AbsenScreen> {
   }
 }
 
-// Overlay gelap dengan lubang lingkaran besar tanpa border
-class _CircleOverlayPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = Colors.black.withOpacity(0.45)
-      ..style = PaintingStyle.fill;
-
-    final center = Offset(size.width / 2, size.height * 0.45);
-    final radius = size.width * 0.42;
-
-    final path = Path()
-      ..addRect(Rect.fromLTWH(0, 0, size.width, size.height))
-      ..addOval(Rect.fromCircle(center: center, radius: radius))
-      ..fillType = PathFillType.evenOdd;
-
-    canvas.drawPath(path, paint);
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter old) => false;
-}
