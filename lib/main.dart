@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'config/api_config.dart';
 import 'screens/login_screen.dart';
 import 'screens/dashboard_screen.dart';
+import 'services/api_service.dart';
 
 void main() {
   runApp(const AbsenMarsaApp());
