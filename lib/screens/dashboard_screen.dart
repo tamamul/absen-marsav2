@@ -79,7 +79,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   void _startAutoSlide() {
     _stopAutoSlide();
     if (_bgUrls.length > 1) {
-      _autoSlideTimer = Timer.periodic(const Duration(seconds: 2), (timer) {
+      _autoSlideTimer = Timer.periodic(const Duration(seconds: 3), (timer) {
         if (_bgCtrl.hasClients && mounted) {
           int next = (_bgIndex + 1) % _bgUrls.length;
           _bgCtrl.animateToPage(
@@ -511,13 +511,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
       children: [
         Image.asset(
           'assets/logo.png',
-          width: 38,
-          height: 38,
+          width: 41,
+          height: 41,
           fit: BoxFit.contain,
         ),
         const SizedBox(width: 10),
         const Text(
-          'Absen MARSA',
+          'Absen-MARSA',
           style: TextStyle(
             fontWeight: FontWeight.bold,
             fontSize: 20,
@@ -577,7 +577,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final agenda = _getAgendaMendatang();
 
     return SizedBox(
-      height: MediaQuery.of(context).size.height * 0.58,
+      height: MediaQuery.of(context).size.height * 0.64,
       child: Stack(
         fit: StackFit.expand,
         children: [
@@ -601,7 +601,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 ),
           // blur & overlay tetap ...
           BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 2, sigmaY: 2),
             child: Container(
               decoration: BoxDecoration(
                 gradient: LinearGradient(
@@ -636,7 +635,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                               Text(
                                 HariBesarHelper.namaHari(_now),
                                 style: const TextStyle(
-                                    color: Colors.white70, fontSize: 13),
+                                    color: Colors.white70, fontSize: 15),
                               ),
                               Text(
                                 '${_now.day} ${HariBesarHelper.namaBulan(_now.month)} ${_now.year}',
@@ -649,7 +648,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                               Text(
                                 '${hijri.hDay} ${HariBesarHelper.namaBulanHijri(hijri.hMonth)} ${hijri.hYear} H',
                                 style: const TextStyle(
-                                    color: Colors.white60, fontSize: 12),
+                                    color: Colors.white60, fontSize: 14),
                               ),
                             ],
                           ),
@@ -701,7 +700,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     if (agenda.isNotEmpty) ...[
                       const SizedBox(height: 8),
                       SizedBox(
-                        height: 50,
+                        height: 45,
                         child: ListView.builder(
                           scrollDirection: Axis.horizontal,
                           itemCount: agenda.length,
