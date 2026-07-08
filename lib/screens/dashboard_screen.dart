@@ -600,7 +600,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   ),
                 ),
           // blur & overlay tetap ...
-          BackdropFilter(
             child: Container(
               decoration: BoxDecoration(
                 gradient: LinearGradient(
@@ -696,59 +695,68 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         ),
                       ],
                     ),
-                    // Agenda mendatang (horizontal)
-                    if (agenda.isNotEmpty) ...[
-                      const SizedBox(height: 8),
-                      SizedBox(
-                        height: 45,
-                        child: ListView.builder(
-                          scrollDirection: Axis.horizontal,
-                          itemCount: agenda.length,
-                          itemBuilder: (_, i) {
-                            final e = agenda[i];
-                            final dt = e['tanggal'] as DateTime;
-                            final selisih = dt.difference(_now).inDays;
-                            return Container(
-                              margin: const EdgeInsets.only(right: 8),
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 10, vertical: 4),
-                              decoration: BoxDecoration(
-                                color: Colors.white.withOpacity(0.15),
-                                borderRadius: BorderRadius.circular(16),
-                                border: Border.all(
-                                    color: Colors.white.withOpacity(0.2)),
-                              ),
-                              child: Row(
-                                children: [
-                                  Text(e['emoji'] as String,
-                                      style: const TextStyle(fontSize: 14)),
-                                  const SizedBox(width: 4),
-                                  Text(
-                                    e['nama'] as String,
-                                    style: const TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 11,
-                                        fontWeight: FontWeight.w500),
-                                  ),
-                                  const SizedBox(width: 4),
-                                  Text(
-                                    '${selisih}h',
-                                    style: TextStyle(
-                                      color: selisih <= 3
-                                          ? Colors.red[300]
-                                          : Colors.white70,
-                                      fontSize: 10,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            );
-                          },
-                        ),
-                      ),
-                    ],
-                  ],
+          // Agenda mendatang (horizontal)
+if (agenda.isNotEmpty) ...[
+  const SizedBox(height: 8),
+  SizedBox(
+    height: 50,
+    child: ListView.builder(
+      scrollDirection: Axis.horizontal,
+      itemCount: agenda.length,
+      itemBuilder: (_, i) {
+        final e = agenda[i];
+        final dt = e['tanggal'] as DateTime;
+        final selisih = dt.difference(_now).inDays;
+        return GestureDetector(
+          onTap: () {
+            // Navigasi ke halaman pengumuman
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => const PengumumanScreen(),
+              ),
+            );
+          },
+          child: Container(
+            margin: const EdgeInsets.only(right: 8),
+            padding: const EdgeInsets.symmetric(
+                horizontal: 10, vertical: 4),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.15),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                  color: Colors.white.withOpacity(0.2)),
+            ),
+            child: Row(
+              children: [
+                Text(e['emoji'] as String,
+                    style: const TextStyle(fontSize: 14)),
+                const SizedBox(width: 4),
+                Text(
+                  e['nama'] as String,
+                  style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w500),
                 ),
+                const SizedBox(width: 4),
+                Text(
+                  '${selisih}h',
+                  style: TextStyle(
+                    color: selisih <= 3
+                        ? Colors.red[300]
+                        : Colors.white70,
+                    fontSize: 10,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    ),
+  ),
+],
                 // ===== BAGIAN BAWAH: NAMA + STATUS BOX + PAGINATION =====
                 Row(
                   children: [
