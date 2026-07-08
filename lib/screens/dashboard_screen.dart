@@ -7,6 +7,7 @@ import 'dart:io';
 import 'dart:convert';
 import 'dart:math';
 import 'dart:ui';
+import 'dart:async';
 import '../services/api_service.dart';
 import '../models/pegawai_model.dart';
 import '../models/presensi_model.dart';
@@ -53,6 +54,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   final PageController _bgCtrl = PageController();
 
   static const Color _primary = Color(0xFF1B5E20);
+  Timer? _autoSlideTimer; 
 
   @override
   void initState() {
@@ -64,12 +66,36 @@ class _DashboardScreenState extends State<DashboardScreen> {
     _loadBgGaleri();
     AppCacheManager.autoCleanup();
     Future.delayed(const Duration(minutes: 1), _tickWaktu);
+    // Timer auto-slide akan dimulai setelah _loadBgGaleri selesai
   }
 
   @override
   void dispose() {
+    _stopAutoSlide(); // hentikan timer
     _bgCtrl.dispose();
     super.dispose();
+  }
+  
+  void _startAutoSlide() {
+    _stopAutoSlide();
+    if (_bgUrls.length > 1) {
+      _autoSlideTimer = Timer.periodic(const Duration(seconds: 2), (timer) {
+        if (_bgCtrl.hasClients && mounted) {
+          int next = (_bgIndex + 1) % _bgUrls.length;
+          _bgCtrl.animateToPage(
+            next,
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeInOut,
+          );
+        }
+      });
+    }
+  }
+
+  // Hentikan auto-slide
+  void _stopAutoSlide() {
+    _autoSlideTimer?.cancel();
+    _autoSlideTimer = null;
   }
 
   void _tickWaktu() {
@@ -97,29 +123,61 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Future<void> _loadBgGaleri() async {
-    try {
-      final tanggal =
-          '${_now.year}-${_now.month.toString().padLeft(2,'0')}-${_now.day.toString().padLeft(2,'0')}';
-      final res =
-          await ApiService.getGaleriHadir(tanggal: tanggal);
+  try {
+    final now = DateTime.now();
+    final yesterday = now.subtract(const Duration(days: 1));
+
+    final tanggalHariIni =
+        '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+    final tanggalKemarin =
+        '${yesterday.year}-${yesterday.month.toString().padLeft(2, '0')}-${yesterday.day.toString().padLeft(2, '0')}';
+
+    // Ambil data untuk dua tanggal secara paralel
+    final results = await Future.wait([
+      ApiService.getGaleriHadir(tanggal: tanggalHariIni),
+      ApiService.getGaleriHadir(tanggal: tanggalKemarin),
+    ]);
+
+    final urls = <String>[];
+
+    // Fungsi ekstrak URL dari response
+    void extractUrls(Map<String, dynamic> res) {
       if (res['status'] == true) {
-        final list =
-            List<Map<String, dynamic>>.from(res['data'] ?? []);
-        final urls = <String>[];
+        final list = List<Map<String, dynamic>>.from(res['data'] ?? []);
         for (final item in list) {
-          final foto = item['foto_masuk'] ?? '';
-          if (foto.isNotEmpty) {
+          final masuk = item['foto_masuk'] ?? '';
+          final keluar = item['foto_keluar'] ?? '';
+          if (masuk.isNotEmpty) {
             urls.add(
-                'https://smk-maarif9kebumen.com/present/public/assets/img/foto_presensi/masuk/$foto');
+                'https://smk-maarif9kebumen.com/present/public/assets/img/foto_presensi/masuk/$masuk');
+          }
+          if (keluar.isNotEmpty) {
+            urls.add(
+                'https://smk-maarif9kebumen.com/present/public/assets/img/foto_presensi/keluar/$keluar');
           }
         }
-        urls.shuffle();
-        if (mounted && urls.isNotEmpty) {
-          setState(() => _bgUrls = urls.take(10).toList());
-        }
       }
-    } catch (_) {}
+    }
+
+    extractUrls(results[0]); // hari ini
+    extractUrls(results[1]); // kemarin
+
+    urls.shuffle();
+    if (mounted) {
+      setState(() {
+        _bgUrls = urls.take(10).toList();
+      });
+      _startAutoSlide();
+    }
+  } catch (_) {
+    // Jika gagal, biarkan kosong atau tampilkan default
+    if (mounted) {
+      setState(() {
+        _bgUrls = [];
+      });
+    }
   }
+}
 
   Future<void> _loadData() async {
     setState(() => _loading = true);
@@ -444,32 +502,30 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final bolehAbsen  = _didalam == true;
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF0F4F0),
-      appBar: AppBar(
-        backgroundColor: _primary,
-        foregroundColor: Colors.white,
-        elevation: 0,
-        title: Row(
-          children: [
-            Container(
-  width: 36,
-  height: 36,
-  padding: const EdgeInsets.all(4),
-  decoration: BoxDecoration(
-    color: Colors.white,
-    borderRadius: BorderRadius.circular(8),
-  ),
-  child: Image.asset(
-  'assets/logo.png',
-  width: 36,
-  height: 36,
-),
-),
-            const SizedBox(width: 10),
-            const Text('Absen MARSA',
-                style: TextStyle(fontWeight: FontWeight.bold)),
-          ],
+  backgroundColor: const Color(0xFFF0F4F0),
+  appBar: AppBar(
+    backgroundColor: _primary,
+    foregroundColor: Colors.white,
+    elevation: 0,
+    title: Row(
+      children: [
+        Image.asset(
+          'assets/logo.png',
+          width: 38,
+          height: 38,
+          fit: BoxFit.contain,
         ),
+        const SizedBox(width: 10),
+        const Text(
+          'Absen MARSA',
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
+            fontSize: 20,
+          ),
+        ),
+      ],
+    ),
+
         actions: [
           GestureDetector(
             onTap: _showProfilMenu,
@@ -516,44 +572,45 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   // ========== HEADER (diperbesar, tata letak baru) ==========
-  Widget _buildHeader() {
+ Widget _buildHeader() {
     final hijri = HijriCalendar.fromDate(_now);
     final agenda = _getAgendaMendatang();
 
-    return Container(
-      height: 300, // diperbesar agar foto lebih luas
+    return SizedBox(
+      height: MediaQuery.of(context).size.height * 0.58,
       child: Stack(
         fit: StackFit.expand,
         children: [
-          // Background foto / gradient
           _bgUrls.isEmpty
-              ? Container(color: _primary)
+              ? Container(color: Colors.grey.shade900)
               : PageView.builder(
                   controller: _bgCtrl,
                   itemCount: _bgUrls.length,
-                  onPageChanged: (i) =>
-                      setState(() => _bgIndex = i),
+                  onPageChanged: (i) {
+                    setState(() => _bgIndex = i);
+                    // reset timer saat user geser manual (opsional)
+                    // _startAutoSlide(); // jika ingin reset timer saat interaksi manual
+                  },
                   itemBuilder: (_, i) => CachedNetworkImage(
                     imageUrl: _bgUrls[i],
                     fit: BoxFit.cover,
-                    placeholder: (_, __) =>
-                        Container(color: _primary),
-                    errorWidget: (_, __, ___) =>
-                        Container(color: _primary),
+                    fadeInDuration: const Duration(milliseconds: 500),
+                    placeholder: (_, __) => Container(color: Colors.grey.shade900),
+                    errorWidget: (_, __, ___) => Container(color: Colors.grey.shade900),
                   ),
                 ),
-          // Blur + overlay hijau
+          // blur & overlay tetap ...
           BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 3, sigmaY: 3),
+            filter: ImageFilter.blur(sigmaX: 2, sigmaY: 2),
             child: Container(
               decoration: BoxDecoration(
                 gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
                   colors: [
-                    _primary.withOpacity(0.85),
-                    _primary.withOpacity(0.7),
+                    Colors.black.withOpacity(0.25),
+                    Colors.black.withOpacity(0.45),
                   ],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
                 ),
               ),
             ),
