@@ -573,234 +573,234 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   // ========== HEADER (diperbesar, tata letak baru) ==========
  Widget _buildHeader() {
-    final hijri = HijriCalendar.fromDate(_now);
-    final agenda = _getAgendaMendatang();
+  final hijri = HijriCalendar.fromDate(_now);
+  final agenda = _getAgendaMendatang();
 
-    return SizedBox(
-      height: MediaQuery.of(context).size.height * 0.64,
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          _bgUrls.isEmpty
-              ? Container(color: Colors.grey.shade900)
-              : PageView.builder(
-                  controller: _bgCtrl,
-                  itemCount: _bgUrls.length,
-                  onPageChanged: (i) {
-                    setState(() => _bgIndex = i);
-                    // reset timer saat user geser manual (opsional)
-                    // _startAutoSlide(); // jika ingin reset timer saat interaksi manual
-                  },
-                  itemBuilder: (_, i) => CachedNetworkImage(
-                    imageUrl: _bgUrls[i],
-                    fit: BoxFit.cover,
-                    fadeInDuration: const Duration(milliseconds: 500),
-                    placeholder: (_, __) => Container(color: Colors.grey.shade900),
-                    errorWidget: (_, __, ___) => Container(color: Colors.grey.shade900),
-                  ),
+  return SizedBox(
+    height: MediaQuery.of(context).size.height * 0.64,
+    child: Stack(
+      fit: StackFit.expand,
+      children: [
+        // ——— Background foto slideshow ———
+        _bgUrls.isEmpty
+            ? Container(color: Colors.grey.shade900)
+            : PageView.builder(
+                controller: _bgCtrl,
+                itemCount: _bgUrls.length,
+                onPageChanged: (i) => setState(() => _bgIndex = i),
+                itemBuilder: (_, i) => CachedNetworkImage(
+                  imageUrl: _bgUrls[i],
+                  fit: BoxFit.cover,
+                  fadeInDuration: const Duration(milliseconds: 500),
+                  placeholder: (_, __) => Container(color: Colors.grey.shade900),
+                  errorWidget: (_, __, ___) => Container(color: Colors.grey.shade900),
                 ),
-          // blur & overlay tetap ...
-            child: Container(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    Colors.black.withOpacity(0.25),
-                    Colors.black.withOpacity(0.45),
-                  ],
-                ),
+              ),
+
+        // ——— Overlay blur + gradient ———
+        BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 2, sigmaY: 2),
+          child: Container(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  Colors.black.withOpacity(0.25),
+                  Colors.black.withOpacity(0.45),
+                ],
               ),
             ),
           ),
-          // Konten
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                // ===== BAGIAN ATAS: TANGGAL & JAM + AGENDA =====
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                HariBesarHelper.namaHari(_now),
-                                style: const TextStyle(
-                                    color: Colors.white70, fontSize: 15),
-                              ),
-                              Text(
-                                '${_now.day} ${HariBesarHelper.namaBulan(_now.month)} ${_now.year}',
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 22,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                              Text(
-                                '${hijri.hDay} ${HariBesarHelper.namaBulanHijri(hijri.hMonth)} ${hijri.hYear} H',
-                                style: const TextStyle(
-                                    color: Colors.white60, fontSize: 14),
-                              ),
-                            ],
-                          ),
-                        ),
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.end,
+        ),
+
+        // ——— Konten utama ———
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              // === BAGIAN ATAS: tanggal, jam, agenda ===
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              '${_now.hour.toString().padLeft(2,'0')}:${_now.minute.toString().padLeft(2,'0')}',
+                              HariBesarHelper.namaHari(_now),
+                              style: const TextStyle(
+                                  color: Colors.white70, fontSize: 15),
+                            ),
+                            Text(
+                              '${_now.day} ${HariBesarHelper.namaBulan(_now.month)} ${_now.year}',
                               style: const TextStyle(
                                 color: Colors.white,
-                                fontSize: 40,
+                                fontSize: 22,
                                 fontWeight: FontWeight.bold,
-                                height: 1,
                               ),
                             ),
-                            GestureDetector(
-                              onTap: () => Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                      builder: (_) =>
-                                          const KalenderScreen())),
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 10, vertical: 4),
-                                decoration: BoxDecoration(
-                                  color: Colors.white24,
-                                  borderRadius: BorderRadius.circular(20),
-                                ),
-                                child: const Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Icon(Icons.calendar_month,
-                                        color: Colors.white, size: 12),
-                                    SizedBox(width: 4),
-                                    Text('Kalender',
-                                        style: TextStyle(
-                                            color: Colors.white,
-                                            fontSize: 11)),
-                                  ],
-                                ),
-                              ),
+                            Text(
+                              '${hijri.hDay} ${HariBesarHelper.namaBulanHijri(hijri.hMonth)} ${hijri.hYear} H',
+                              style: const TextStyle(
+                                  color: Colors.white60, fontSize: 14),
                             ),
                           ],
                         ),
-                      ],
-                    ),
-          // Agenda mendatang (horizontal)
-if (agenda.isNotEmpty) ...[
-  const SizedBox(height: 8),
-  SizedBox(
-    height: 50,
-    child: ListView.builder(
-      scrollDirection: Axis.horizontal,
-      itemCount: agenda.length,
-      itemBuilder: (_, i) {
-        final e = agenda[i];
-        final dt = e['tanggal'] as DateTime;
-        final selisih = dt.difference(_now).inDays;
-        return GestureDetector(
-          onTap: () {
-            // Navigasi ke halaman pengumuman
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => const PengumumanScreen(),
-              ),
-            );
-          },
-          child: Container(
-            margin: const EdgeInsets.only(right: 8),
-            padding: const EdgeInsets.symmetric(
-                horizontal: 10, vertical: 4),
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.15),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(
-                  color: Colors.white.withOpacity(0.2)),
-            ),
-            child: Row(
-              children: [
-                Text(e['emoji'] as String,
-                    style: const TextStyle(fontSize: 14)),
-                const SizedBox(width: 4),
-                Text(
-                  e['nama'] as String,
-                  style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w500),
-                ),
-                const SizedBox(width: 4),
-                Text(
-                  '${selisih}h',
-                  style: TextStyle(
-                    color: selisih <= 3
-                        ? Colors.red[300]
-                        : Colors.white70,
-                    fontSize: 10,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    ),
-  ),
-],
-                // ===== BAGIAN BAWAH: NAMA + STATUS BOX + PAGINATION =====
-                Row(
-                  children: [
-                    Expanded(
-                      child: Row(
+                      ),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
                         children: [
                           Text(
-                            _pegawai?.nama ?? '',
+                            '${_now.hour.toString().padLeft(2,'0')}:${_now.minute.toString().padLeft(2,'0')}',
                             style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold),
+                              color: Colors.white,
+                              fontSize: 40,
+                              fontWeight: FontWeight.bold,
+                              height: 1,
+                            ),
                           ),
-                          const SizedBox(width: 8),
-                          _buildStatusRingkas(),
+                          GestureDetector(
+                            onTap: () => Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                    builder: (_) => const KalenderScreen())),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 10, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: Colors.white24,
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              child: const Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(Icons.calendar_month,
+                                      color: Colors.white, size: 12),
+                                  SizedBox(width: 4),
+                                  Text('Kalender',
+                                      style: TextStyle(
+                                          color: Colors.white, fontSize: 11)),
+                                ],
+                              ),
+                            ),
+                          ),
                         ],
                       ),
-                    ),
-                    if (_bgUrls.length > 1)
-                      Row(
-                        children: List.generate(
-                          _bgUrls.length > 5 ? 5 : _bgUrls.length,
-                          (i) => Container(
-                            width: i == _bgIndex ? 12 : 5,
-                            height: 5,
-                            margin: const EdgeInsets.symmetric(horizontal: 2),
-                            decoration: BoxDecoration(
-                              color: i == _bgIndex
-                                  ? Colors.white
-                                  : Colors.white38,
-                              borderRadius: BorderRadius.circular(3),
+                    ],
+                  ),
+
+                  // ——— Agenda mendatang (horizontal & bisa diklik) ———
+                  if (agenda.isNotEmpty) ...[
+                    const SizedBox(height: 8),
+                    SizedBox(
+                      height: 45,
+                      child: ListView.builder(
+                        scrollDirection: Axis.horizontal,
+                        itemCount: agenda.length,
+                        itemBuilder: (_, i) {
+                          final e = agenda[i];
+                          final dt = e['tanggal'] as DateTime;
+                          final selisih = dt.difference(_now).inDays;
+                          return GestureDetector(
+                            onTap: () {
+                              // Navigasi ke halaman Pengumuman
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                    builder: (_) => const PengumumanScreen()),
+                              );
+                            },
+                            child: Container(
+                              margin: const EdgeInsets.only(right: 8),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 10, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withOpacity(0.15),
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(
+                                    color: Colors.white.withOpacity(0.2)),
+                              ),
+                              child: Row(
+                                children: [
+                                  Text(e['emoji'] as String,
+                                      style: const TextStyle(fontSize: 14)),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    e['nama'] as String,
+                                    style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w500),
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    '${selisih}h',
+                                    style: TextStyle(
+                                      color: selisih <= 3
+                                          ? Colors.red[300]
+                                          : Colors.white70,
+                                      fontSize: 10,
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+
+              // === BAGIAN BAWAH: nama profil + status box + pagination ===
+              Row(
+                children: [
+                  Expanded(
+                    child: Row(
+                      children: [
+                        Text(
+                          _pegawai?.nama ?? '',
+                          style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold),
+                        ),
+                        const SizedBox(width: 8),
+                        _buildStatusRingkas(),
+                      ],
+                    ),
+                  ),
+                  if (_bgUrls.length > 1)
+                    Row(
+                      children: List.generate(
+                        _bgUrls.length > 5 ? 5 : _bgUrls.length,
+                        (i) => Container(
+                          width: i == _bgIndex ? 12 : 5,
+                          height: 5,
+                          margin: const EdgeInsets.symmetric(horizontal: 2),
+                          decoration: BoxDecoration(
+                            color: i == _bgIndex ? Colors.white : Colors.white38,
+                            borderRadius: BorderRadius.circular(3),
                           ),
                         ),
                       ),
-                  ],
-                ),
-              ],
-            ),
+                    ),
+                ],
+              ),
+            ],
           ),
-        ],
-      ),
-    );
-  }
+        ),
+      ],
+    ),
+  );
+}
 
   // ========== BOTTOM ABSEN (tetap) ==========
   Widget _buildBottomAbsen(
