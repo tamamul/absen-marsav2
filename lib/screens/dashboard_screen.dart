@@ -79,7 +79,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   void _startAutoSlide() {
     _stopAutoSlide();
     if (_bgUrls.length > 1) {
-      _autoSlideTimer = Timer.periodic(const Duration(seconds: 3), (timer) {
+      _autoSlideTimer = Timer.periodic(const Duration(seconds: 4), (timer) {
         if (_bgCtrl.hasClients && mounted) {
           int next = (_bgIndex + 1) % _bgUrls.length;
           _bgCtrl.animateToPage(
@@ -610,7 +610,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ),
             ),
           ),
-        ),
 
         // ——— Konten utama ———
         Padding(
