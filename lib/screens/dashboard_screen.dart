@@ -577,7 +577,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   final agenda = _getAgendaMendatang();
 
   return SizedBox(
-    height: MediaQuery.of(context).size.height * 0.64,
+    height: MediaQuery.of(context).size.height * 0.76,
     child: Stack(
       fit: StackFit.expand,
       children: [
@@ -598,9 +598,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ),
 
         // ——— Overlay blur + gradient ———
-        BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 2, sigmaY: 2),
-          child: Container(
+        Container(
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 begin: Alignment.topCenter,
